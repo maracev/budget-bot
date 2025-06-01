@@ -31,6 +31,7 @@ return [
 
     'env' => env('APP_ENV', 'production'),
     'telegram_bot_token' => env('TELEGRAM_BOT_TOKEN'),
+    'my_telegram_chat_id' => env('MY_TELEGRAM_CHAT_ID', '0000aaaaaa'), // Replace with your actual Telegram ID
 
     /*
     |--------------------------------------------------------------------------

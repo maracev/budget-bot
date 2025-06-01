@@ -17,9 +17,11 @@ class TransactionFactory extends Factory
     public function definition(): array
     {
         return [
-            'tipo' => $this->faker->randomElement(['income', 'outcome']),
-            'monto' => $this->faker->randomNumber(4),   
-            'categoria' => $this->faker->word(),
+            'type' => $this->faker->randomElement(['income', 'outcome']),
+            'amount' => $this->faker->randomNumber(4),   
+            'category' => $this->faker->word(),
+            'owner_id' => $this->faker->randomNumber(5, true), // Simula un ID de usuario
+            'owner_name' => $this->faker->userName(),
         ];
     }
 }
