@@ -26,7 +26,7 @@ class TelegramBotController extends Controller
         $update   = $telegram->getWebhookUpdate();
         $message  = $update->getMessage();
 
-        $text     = strtolower(trim($message->getText()));
+        $text = strtolower(ltrim(trim($message->getText()), '/'));
         $chatId   = $message->getChat()->getId();
         $username = $message->getChat()->getUsername();
 

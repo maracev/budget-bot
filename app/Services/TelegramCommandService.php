@@ -13,20 +13,37 @@ class TelegramCommandService
     private TransactionService $transactionService;
     private MonthlyClosureService $closureService;
 
-    public function __construct( TransactionService $transactionService, MonthlyClosureService $closureService ) {
+    private CreditCardService $creditCardService;
+
+    public function __construct( 
+        TransactionService $transactionService, 
+        MonthlyClosureService $closureService,
+        CreditCardService $creditCardService
+    ) {
         $this->transactionService = $transactionService;
         $this->closureService = $closureService;
+        $this->creditCardService = $creditCardService;
     }
 
+    /**
+     * Process the command received from Telegram.
+     *
+     * @param Api $telegram
+     * @param string $chatId
+     * @param ?string $username
+     * @param string $text
+     */
     public function execute(Api $telegram, string $chatId, ?string $username, string $text): void
     {
         [$command, $args] = $this->parseCommand($text);
 
         match ($command) {
-            'ingreso', 'gasto' => $this->handleTransaction($telegram, $chatId, $username, $command, $args),
-            'balance'           => $this->handleBalance($telegram, $chatId),
-            'cierre'            => $this->handleClosure($telegram, $chatId, $args),
-            default             => $this->sendUnknownCommand($telegram, $chatId),
+            'ingreso', 'gasto'       => $this->handleTransaction($telegram, $chatId, $username, $command, $args),
+            'balance'                => $this->handleBalance($telegram, $chatId),
+            'cierre'                 => $this->handleClosure($telegram, $chatId, $args),
+            'tarjeta'                => $this->handleCreditCard($telegram, $chatId, $username, $args),
+            'tarjeta_balance'        => $this->handleCreditCardBalance($telegram, $chatId, $args),
+            default                  => $this->sendUnknownCommand($telegram, $chatId),
         };
     }
 
@@ -38,9 +55,17 @@ class TelegramCommandService
         return [$command, $args];
     }
 
+    /**
+     * Handles Income or Expense transactions.
+     * @param \Telegram\Bot\Api $telegram
+     * @param string $chatId
+     * @param mixed $username
+     * @param string $rawType
+     * @param string $args
+     * @return void
+     */
     private function handleTransaction(Api $telegram, string $chatId, ?string $username, string $rawType, string $args): void
     {
-        // Use el servicio de transacciones para persistir la lógica
         if (! $this->transactionService->register($rawType, $args, $chatId, $username, $errorMessage)) {
             $telegram->sendMessage([
                 'chat_id' => $chatId,
@@ -49,47 +74,63 @@ class TelegramCommandService
             return;
         }
 
+        $amount   = $this->transactionService->getLastAmount();
+        $category = $this->transactionService->getLastCategory();
+
         $telegram->sendMessage([
             'chat_id' => $chatId,
-            'text'    => "Registrado: {$rawType} de \${$this->transactionService->getLastAmount()} en {$this->transactionService->getLastCategory()}",
+            'text'    => "Registrado: {$rawType} de \${$amount} en {$category}",
         ]);
     }
 
+    /**
+     * Shows the general transaction balance.
+     * @param \Telegram\Bot\Api $telegram
+     * @param string $chatId
+     * @return void
+     */
     private function handleBalance(Api $telegram, string $chatId): void
     {
-        $balanceData = $this->transactionService->getBalance();
-        $texto = [
+        $balance = $this->transactionService->getBalance();
+        $textLines = [
             "Balance actual:",
-            "Ingresos: \${$balanceData['ingresos']}",
-            "Gastos: \${$balanceData['gastos']}",
-            "Saldo: \${$balanceData['saldo']}",
+            "Ingresos: \${$balance['ingresos']}",
+            "Gastos: \${$balance['gastos']}",
+            "Saldo: \${$balance['saldo']}",
         ];
 
         $telegram->sendMessage([
             'chat_id' => $chatId,
-            'text'    => implode("\n", $texto),
+            'text'    => implode("\n", $textLines),
         ]);
     }
 
+    /**
+     * Handles monthly closure commands.
+     * @param \Telegram\Bot\Api $telegram
+     * @param string $chatId
+     * @param string $args
+     * @return void
+     */
     private function handleClosure(Api $telegram, string $chatId, string $args): void
     {
         $monthMap = config('month_map');
         $year     = Carbon::now()->year;
 
         if (empty($args)) {
-            // Cerrar mes actual
+            // Cierra mes actual
             $month     = Carbon::now()->month;
-            $monthText = Carbon::createFromDate($year, $month, 1)->locale('es')->monthName;
+            $monthName = Carbon::createFromDate($year, $month, 1)->locale('es')->monthName;
         } else {
             $key       = trim($args);
             $month     = $monthMap[$key] ?? null;
-            $monthText = $key;
+            $monthName = $key;
         }
 
         if (! $month) {
             $telegram->sendMessage([
                 'chat_id' => $chatId,
-                'text'    => "Mes inválido. Usá: \"cierre mayo\" u \"cierre\" para mes actual.",
+                'text'    => "Mes inválido. Usar: “cierre mayo” o simplemente “cierre” para mes actual.",
             ]);
             return;
         }
@@ -98,10 +139,76 @@ class TelegramCommandService
 
         $telegram->sendMessage([
             'chat_id' => $chatId,
-            'text'    => "Cierre de {$monthText} {$year}:\n" .
+            'text'    => "Cierre de {$monthName} {$year}:\n" .
                          "Ingresos: \${$closure->ingresos}\n" .
                          "Gastos: \${$closure->gastos}\n" .
                          "Saldo: \${$closure->saldo}",
+        ]);
+    }
+
+    /**
+     * Handles credit card purchases.
+     * @param \Telegram\Bot\Api $telegram
+     * @param string $chatId
+     * @param mixed $username
+     * @param string $args
+     * @return void
+     */
+    private function handleCreditCard(Api $telegram, string $chatId, ?string $username, string $args): void
+    {
+        if (! $this->creditCardService->registerPurchase($args, $chatId, $username, $errorMessage)) {
+            $telegram->sendMessage([
+                'chat_id' => $chatId,
+                'text'    => $errorMessage,
+            ]);
+            return;
+        }
+
+        // Volver a extraer monto y vendor para mensaje
+        preg_match('/^(\d+(\.\d{1,2})?)\s+([\pL\pN\s]+?)(?:\s+(\S+))?(?:\s+(\d+))?$/u', $args, $m);
+        $monto  = $m[1];
+        $vendor = trim($m[3]);
+
+        $telegram->sendMessage([
+            'chat_id' => $chatId,
+            'text'    => "Compra con tarjeta registrada: \${$monto} en {$vendor}",
+        ]);
+    }
+
+    /**
+     * Handles credit card balance inquiries.
+     * @param \Telegram\Bot\Api $telegram
+     * @param string $chatId
+     * @param string $args
+     * @return void
+     */
+    private function handleCreditCardBalance(Api $telegram, string $chatId, string $args): void
+    {
+        $monthMap = config('month_map');
+        $year     = Carbon::now()->year;
+
+        if (empty($args)) {
+            $month     = Carbon::now()->month;
+            $monthName = Carbon::createFromDate($year, $month, 1)->locale('es')->monthName;
+        } else {
+            $key       = trim($args);
+            $month     = $monthMap[$key] ?? null;
+            $monthName = $key;
+        }
+
+        if (! $month) {
+            $telegram->sendMessage([
+                'chat_id' => $chatId,
+                'text'    => "Mes inválido. Usar “tarjeta_balance mayo” o “tarjeta_balance” para mes actual.",
+            ]);
+            return;
+        }
+
+        $balance = $this->creditCardService->getMonthlyBalance($month, $year);
+
+        $telegram->sendMessage([
+            'chat_id' => $chatId,
+            'text'    => "Balance tarjeta para {$monthName} {$year}: \${$balance}",
         ]);
     }
 
@@ -109,11 +216,13 @@ class TelegramCommandService
     {
         $telegram->sendMessage([
             'chat_id' => $chatId,
-            'text'    => "Comando desconocido. Usá:\n" .
-                         "\"ingreso 1000 sueldo\"\n" .
-                         "\"gasto 500 comida\"\n" .
-                         "\"balance\"\n" .
-                         "\"cierre\" o \"cierre junio\"",
+            'text'    => "Comando desconocido. Opciones:\n" .
+                         "• ingreso <monto> <categoría>\n" .
+                         "• gasto <monto> <categoría>\n" .
+                         "• balance\n" .
+                         "• cierre [<mes>]\n" .
+                         "• tarjeta <monto> <vendor> [<card_name>] [<n_cuotas>]\n" .
+                         "• tarjeta_balance [<mes>]",
         ]);
     }
 }

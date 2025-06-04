@@ -24,12 +24,12 @@ class TransactionService
     {
         $typeMap = config('type_mapper');
         $type    = $typeMap[$rawType] ?? null;
+        
         if (! $type) {
             $errorMessage = 'Tipo inválido. Usá "ingreso" o "gasto".';
             return false;
         }
 
-        // Validar formato "monto categoría"
         if (! preg_match('/^(\d+)\s+(.*)$/', $args, $matches)) {
             $errorMessage = "Formato inválido. Usá: \"{$rawType} 1000 sueldo\".";
             return false;
@@ -74,7 +74,6 @@ class TransactionService
         ];
     }
 
-    // Métodos para la respuesta en el controlador
     public function getLastAmount(): int
     {
         return $this->lastAmount;
