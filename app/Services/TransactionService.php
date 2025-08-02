@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Carbon\Carbon;
 use App\Models\Movimiento;
 use App\Models\Transaction;
 use Illuminate\Support\Facades\Log;
@@ -24,7 +25,7 @@ class TransactionService
     {
         $typeMap = config('type_mapper');
         $type    = $typeMap[$rawType] ?? null;
-        
+
         if (! $type) {
             $errorMessage = 'Tipo inválido. Usá "ingreso" o "gasto".';
             return false;
@@ -63,8 +64,13 @@ class TransactionService
      */
     public function getBalance(): array
     {
-        $incomes = Transaction::where('type', config('type_mapper.ingreso'))->sum('amount');
-        $outgoes   = Transaction::where('type', config('type_mapper.gasto'))->sum('amount');
+        $incomes = Transaction::where('type', config('type_mapper.ingreso'))
+            ->whereMonth('created_at', Carbon::now()->month)
+            ->sum('amount');
+        $outgoes   = Transaction::where('type', config('type_mapper.gasto'))
+            ->whereMonth('created_at', Carbon::now()->month)
+            ->sum('amount');
+
         $balance    = $incomes - $outgoes;
 
         return [

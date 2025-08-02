@@ -140,9 +140,9 @@ class TelegramCommandService
         $telegram->sendMessage([
             'chat_id' => $chatId,
             'text'    => "Cierre de {$monthName} {$year}:\n" .
-                         "Ingresos: \${$closure->ingresos}\n" .
-                         "Gastos: \${$closure->gastos}\n" .
-                         "Saldo: \${$closure->saldo}",
+                         "Ingresos: \$" . strval($closure->income) . "\n" .
+                         "Gastos: \$" . strval($closure->outgo) . "\n" .
+                         "Saldo: \$" . strval($closure->balance),
         ]);
     }
 
