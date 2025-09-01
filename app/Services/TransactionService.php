@@ -11,6 +11,7 @@ class TransactionService
 {
     private int $lastAmount = 0;
     private string $lastCategory = '';
+    private string $lastSubcategory = '';
 
     /**
      * Summary of register
@@ -36,20 +37,27 @@ class TransactionService
             return false;
         }
 
-        $amount   = (int) $matches[1];
-        $category = trim($matches[2]);
+        $amount = (int) $matches[1];
+        $rest   = trim($matches[2]);
+
+        // Categoría = primera palabra; Rubro/Subcategoría = resto (opcional)
+        $parts       = preg_split('/\s+/', $rest, 2, PREG_SPLIT_NO_EMPTY);
+        $category    = $parts[0] ?? '';
+        $subcategory = isset($parts[1]) ? trim($parts[1]) : null;
 
         try {
             Transaction::create([
                 'type'       => $type,
                 'amount'      => $amount,
-                'category'  => $category,
+                'category'    => $category,
+                'subcategory' => $subcategory,
                 'owner_id'   => $ownerId,
                 'owner_name' => $ownerName,
             ]);
 
             $this->lastAmount   = $amount;
             $this->lastCategory = $category;
+            $this->lastSubcategory = $subcategory ?? '';
             return true;
         } catch (\Throwable $e) {
             Log::error('Error al crear transacción: ' . $e->getMessage());
@@ -88,5 +96,10 @@ class TransactionService
     public function getLastCategory(): string
     {
         return $this->lastCategory;
+    }
+
+    public function getLastSubcategory(): ?string
+    {
+        return $this->lastSubcategory !== '' ? $this->lastSubcategory : null;
     }
 }

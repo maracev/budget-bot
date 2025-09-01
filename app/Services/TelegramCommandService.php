@@ -74,12 +74,15 @@ class TelegramCommandService
             return;
         }
 
-        $amount   = $this->transactionService->getLastAmount();
-        $category = $this->transactionService->getLastCategory();
+        $amount      = $this->transactionService->getLastAmount();
+        $category    = $this->transactionService->getLastCategory();
+        $subcategory = $this->transactionService->getLastSubcategory();
+
+        $where = $subcategory ? "{$category} / {$subcategory}" : $category;
 
         $telegram->sendMessage([
             'chat_id' => $chatId,
-            'text'    => "Registrado: {$rawType} de \${$amount} en {$category}",
+            'text'    => "Registrado: {$rawType} de \${$amount} en {$where}",
         ]);
     }
 
@@ -217,8 +220,8 @@ class TelegramCommandService
         $telegram->sendMessage([
             'chat_id' => $chatId,
             'text'    => "Comando desconocido. Opciones:\n" .
-                         "• ingreso <monto> <categoría>\n" .
-                         "• gasto <monto> <categoría>\n" .
+                         "• ingreso <monto> <categoría> [<rubro>]\n" .
+                         "• gasto <monto> <categoría> [<rubro>]\n" .
                          "• balance\n" .
                          "• cierre [<mes>]\n" .
                          "• tarjeta <monto> <vendor> [<card_name>] [<n_cuotas>]\n" .

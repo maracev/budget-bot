@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 class Transaction extends Model
 {
     use HasFactory;
-    protected $fillable = ['type', 'category', 'amount', 'owner_id', 'owner_name'];
+    protected $fillable = ['type', 'category', 'subcategory', 'amount', 'owner_id', 'owner_name'];
 
     
 
