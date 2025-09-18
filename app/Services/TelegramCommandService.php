@@ -40,6 +40,7 @@ class TelegramCommandService
         match ($command) {
             'ingreso', 'gasto'       => $this->handleTransaction($telegram, $chatId, $username, $command, $args),
             'balance'                => $this->handleBalance($telegram, $chatId),
+            'filtro_balance'         => $this->handleFilteredBalance($telegram, $chatId),
             'cierre'                 => $this->handleClosure($telegram, $chatId, $args),
             'tarjeta'                => $this->handleCreditCard($telegram, $chatId, $username, $args),
             'tarjeta_balance'        => $this->handleCreditCardBalance($telegram, $chatId, $args),
@@ -105,6 +106,17 @@ class TelegramCommandService
         $telegram->sendMessage([
             'chat_id' => $chatId,
             'text'    => implode("\n", $textLines),
+        ]);
+    }
+
+    private function handleFilteredBalance(Api $telegram, string $chatId): void
+    {
+        $balance = $this->transactionService->getBalancePerCategory();
+        Log::debug('balance', ['balance', $balance]);
+
+        $telegram->sendMessage([
+            'chat_id' => $chatId,
+            'text'    => implode("\n", ['balance' => $balance]),
         ]);
     }
 
@@ -223,6 +235,7 @@ class TelegramCommandService
                          "• ingreso <monto> <categoría> [<rubro>]\n" .
                          "• gasto <monto> <categoría> [<rubro>]\n" .
                          "• balance\n" .
+                         "• filtro_balance\n".
                          "• cierre [<mes>]\n" .
                          "• tarjeta <monto> <vendor> [<card_name>] [<n_cuotas>]\n" .
                          "• tarjeta_balance [<mes>]",

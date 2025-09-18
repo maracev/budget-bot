@@ -2,10 +2,11 @@
 
 namespace App\Services;
 
-use Carbon\Carbon;
 use App\Models\Movimiento;
 use App\Models\Transaction;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
 
 class TransactionService
 {
@@ -86,6 +87,28 @@ class TransactionService
             'gastos'   => $outgoes,
             'saldo'    => $balance,
         ];
+    }
+
+    public function getBalancePerCategory(): string
+    {
+        $balance = Transaction::query()
+            ->whereBetween('created_at', [Carbon::now()->startOfMonth(), now()])
+            ->groupBy('type', 'category')
+            ->orderBy('type')
+            ->orderBy('category')
+            ->get([
+                'type as tipo',
+                'category as categoria',
+                DB::raw('SUM(amount) as total'),
+                DB::raw('COUNT(*) as transacciones'),
+            ])
+            ->toArray();
+
+        $message = "*Resumen de este mes*\n\n";
+        foreach ($balance as $row) {
+            $message .= "• **{$row['tipo']}** - {$row['categoria']}: {$row['total']} ({$row['transacciones']} tx)\n";
+        }
+        return $message;
     }
 
     public function getLastAmount(): int
