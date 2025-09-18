@@ -112,11 +112,11 @@ class TelegramCommandService
     private function handleFilteredBalance(Api $telegram, string $chatId): void
     {
         $balance = $this->transactionService->getBalancePerCategory();
-        Log::debug('balance', ['balance', $balance]);
 
         $telegram->sendMessage([
             'chat_id' => $chatId,
             'text'    => implode("\n", ['balance' => $balance]),
+            'parse_mode' => 'HTML',
         ]);
     }
 

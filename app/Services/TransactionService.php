@@ -106,7 +106,7 @@ class TransactionService
 
         $message = "*Resumen de este mes*\n\n";
         foreach ($balance as $row) {
-            $message .= "• **{$row['tipo']}** - {$row['categoria']}: {$row['total']} ({$row['transacciones']} tx)\n";
+            $message .= "**{$row['tipo']}** - {$row['categoria']}: {$row['total']} ({$row['transacciones']} tx)\n";
         }
         return $message;
     }
