@@ -40,7 +40,7 @@ class TelegramCommandService
         match ($command) {
             'ingreso', 'gasto'       => $this->handleTransaction($telegram, $chatId, $username, $command, $args),
             'balance'                => $this->handleBalance($telegram, $chatId),
-            'filtro_balance'         => $this->handleFilteredBalance($telegram, $chatId),
+            'filtro_balance'         => $this->handleFilteredBalance($telegram, $chatId, $args),
             'cierre'                 => $this->handleClosure($telegram, $chatId, $args),
             'tarjeta'                => $this->handleCreditCard($telegram, $chatId, $username, $args),
             'tarjeta_balance'        => $this->handleCreditCardBalance($telegram, $chatId, $args),
@@ -109,9 +109,22 @@ class TelegramCommandService
         ]);
     }
 
-    private function handleFilteredBalance(Api $telegram, string $chatId): void
+    private function handleFilteredBalance(Api $telegram, string $chatId, string $args): void
     {
-        $balance = $this->transactionService->getBalancePerCategory();
+        $monthMap = config('month_map');
+
+        $currentDate = $this->getCurrentDate();
+        $year = $currentDate['year'];
+        $month = $currentDate['month'];
+
+        if (!empty($args)) {
+            $key       = trim($args);
+            $month     = $monthMap[$key] ?? null;
+        }
+
+        logger('**** month ' . $month);
+
+        $balance = $this->transactionService->getBalancePerCategory($month, $year);
 
         $telegram->sendMessage([
             'chat_id' => $chatId,
@@ -130,7 +143,7 @@ class TelegramCommandService
     private function handleClosure(Api $telegram, string $chatId, string $args): void
     {
         $monthMap = config('month_map');
-        $year     = Carbon::now()->year;
+        $year = $this->getCurrentDate()['year'];
 
         if (empty($args)) {
             // Cierra mes actual
@@ -200,7 +213,7 @@ class TelegramCommandService
     private function handleCreditCardBalance(Api $telegram, string $chatId, string $args): void
     {
         $monthMap = config('month_map');
-        $year     = Carbon::now()->year;
+        $year = $this->getCurrentDate()['year'];
 
         if (empty($args)) {
             $month     = Carbon::now()->month;
@@ -235,10 +248,26 @@ class TelegramCommandService
                          "• ingreso <monto> <categoría> [<rubro>]\n" .
                          "• gasto <monto> <categoría> [<rubro>]\n" .
                          "• balance\n" .
-                         "• filtro_balance\n".
+                         "• filtro_balance[<mes>]\n".
                          "• cierre [<mes>]\n" .
                          "• tarjeta <monto> <vendor> [<card_name>] [<n_cuotas>]\n" .
                          "• tarjeta_balance [<mes>]",
         ]);
     }
+
+    /**
+     * Summary of getCurrentDate
+     * @return array{month: int, monthName: string, year: int}
+     */
+    protected function getCurrentDate(): array
+    {
+        $month = Carbon::now()->month; 
+        $year = Carbon::now()->year;
+         return [
+            'month' => $month,
+            'year' => $year,
+            'monthName' => Carbon::createFromDate($year, $month, 1)->locale('es')->monthName
+         ];
+    }
+
 }

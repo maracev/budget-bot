@@ -89,10 +89,17 @@ class TransactionService
         ];
     }
 
-    public function getBalancePerCategory(): string
+    public function getBalancePerCategory($month = null, $year=null): string
     {
+        $month = $month ?? now()->month;
+        $monthName = Carbon::createFromDate($year, $month, 1)->locale('es')->monthName;
+        $year  = now()->year;
+
+        $start = Carbon::create($year, $month, 1)->startOfMonth();
+        $end   = Carbon::create($year, $month, 1)->endOfMonth();
+
         $balance = Transaction::query()
-            ->whereBetween('created_at', [Carbon::now()->startOfMonth(), now()])
+            ->whereBetween('created_at', [$start, $end])
             ->groupBy('type', 'category')
             ->orderBy('type')
             ->orderBy('category')
@@ -104,9 +111,9 @@ class TransactionService
             ])
             ->toArray();
 
-        $message = "*Resumen de este mes*\n\n";
+        $message = "<b>Resumen del mes $monthName</b> \n\n";
         foreach ($balance as $row) {
-            $message .= "**{$row['tipo']}** - {$row['categoria']}: {$row['total']} ({$row['transacciones']} tx)\n";
+            $message .= "<b>{$row['tipo']}</b> - {$row['categoria']}: {$row['total']} ({$row['transacciones']} tx)\n";
         }
         return $message;
     }
