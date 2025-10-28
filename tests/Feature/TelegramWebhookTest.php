@@ -38,10 +38,16 @@ class TelegramWebhookTest extends TestCase
         // Reemplaza la instancia que usa el controlador por la fake
         $this->app->instance(\Telegram\Bot\Api::class, $telegram);
 
+        config([
+            'app.telegram_secret_token' => 'secret-token',
+            'app.telegram_bot_token' => 'fake-token',
+            'app.my_telegram_chat_id' => 123456,
+        ]);
+
         // Llama al endpoint (no importa el payload real, ya inyectamos el update)
-        $this->post('/telegram/webhook')
-            ->assertOk()
-            ->assertJson(['ok' => true]);
+        $this->post('/telegram/webhook', [], [
+            'X-Telegram-Bot-Api-Secret-Token' => 'secret-token',
+        ])->assertOk();
 
         // Verifica que se haya creado la transacción
         $this->assertDatabaseHas('movimientos', [

@@ -44,21 +44,8 @@ class CreditCardService
             $installments = 1;
         }
 
-        // The cutoff day is the first Thursday of the month for Visa and Amex,
-        // TODO: make this configurable
-        $cutoffDay = 10;
-        
-        if ($cardName && in_array(strtolower($cardName), ['visa', 'amex'])) {
-            $cutoffDay = Carbon::now()->startOfMonth()->next(Carbon::THURSDAY)->day;
-        }
         $today = Carbon::now();
-
-        // Determine the first billing cycle based on the cutoff day
-        if ($today->day <= $cutoffDay) {
-            $firstCycle = $today->copy();
-        } else {
-            $firstCycle = $today->copy()->addMonthNoOverflow();
-        }
+        $firstCycle = $this->resolveNextCutoffDate($cardName, $today);
 
         $cycles = [];
         for ($i = 0; $i < $installments; $i++) {
@@ -128,5 +115,54 @@ class CreditCardService
         return CreditCardPurchase::where('billing_cycle', $cycle)
             ->orderBy('purchased_at', 'desc')
             ->get();
+    }
+
+    /**
+     * Return the next cutoff date strictly after the reference date.
+     */
+    protected function resolveNextCutoffDate(?string $cardName, Carbon $referenceDate): Carbon
+    {
+        $normalized = $cardName ? strtolower($cardName) : null;
+
+        if ($normalized && in_array($normalized, ['visa', 'amex'], true)) {
+            $candidate = $referenceDate->copy()
+                ->firstOfMonth(Carbon::THURSDAY)
+                ->startOfDay();
+
+            if ($referenceDate->lt($candidate)) {
+                return $candidate;
+            }
+
+            return $referenceDate->copy()
+                ->addMonthNoOverflow()
+                ->firstOfMonth(Carbon::THURSDAY)
+                ->startOfDay();
+        }
+
+        $candidate = Carbon::create(
+            $referenceDate->year,
+            $referenceDate->month,
+            10,
+            0,
+            0,
+            0,
+            $referenceDate->getTimezone()
+        );
+
+        if ($referenceDate->lt($candidate)) {
+            return $candidate;
+        }
+
+        $nextMonth = $referenceDate->copy()->addMonthNoOverflow();
+
+        return Carbon::create(
+            $nextMonth->year,
+            $nextMonth->month,
+            10,
+            0,
+            0,
+            0,
+            $referenceDate->getTimezone()
+        );
     }
 }

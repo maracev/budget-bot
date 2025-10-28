@@ -102,6 +102,62 @@ class CreditCardServiceTest extends TestCase
     }
 
     /** @test */
+    public function it_uses_first_thursday_cutoff_for_visa_purchases()
+    {
+        $args = '1200 TiendaZ Visa 2';
+        $ownerId = '200213027';
+        $ownerName = 'usuario_test';
+
+        $result = $this->service->registerPurchase($args, $ownerId, $ownerName, $errorMessage);
+
+        $this->assertTrue($result);
+        $this->assertEmpty($errorMessage);
+
+        $purchases = CreditCardPurchase::orderBy('id')->get();
+
+        // Hoy (05/05) es posterior al primer jueves (día 1), por lo que el primer ciclo salta a junio
+        $this->assertEquals('2025-06', $purchases[0]->billing_cycle);
+        $this->assertEquals('2025-07', $purchases[1]->billing_cycle);
+    }
+
+    /** @test */
+    public function it_moves_to_following_cycle_when_purchase_on_first_thursday_for_amex()
+    {
+        Carbon::setTestNow(Carbon::create(2025, 5, 1, 12, 0, 0));
+
+        $args = '800 Supermercado Amex';
+        $ownerId = '200213027';
+        $ownerName = 'usuario_test';
+
+        $result = $this->service->registerPurchase($args, $ownerId, $ownerName, $errorMessage);
+
+        $this->assertTrue($result);
+        $this->assertEmpty($errorMessage);
+
+        $purchase = CreditCardPurchase::first();
+        $this->assertEquals('2025-06', $purchase->billing_cycle);
+    }
+
+    /** @test */
+    public function it_assigns_current_cycle_when_before_next_cutoff_in_following_month()
+    {
+        Carbon::setTestNow(Carbon::create(2025, 10, 28, 12, 0, 0));
+
+        $args = '900 TiendaY Visa';
+        $ownerId = '200213027';
+        $ownerName = 'usuario_test';
+
+        $result = $this->service->registerPurchase($args, $ownerId, $ownerName, $errorMessage);
+
+        $this->assertTrue($result);
+        $this->assertEmpty($errorMessage);
+
+        $purchase = CreditCardPurchase::first();
+        // Próximo corte es el primer jueves de noviembre (06/11), por lo que la compra queda en noviembre.
+        $this->assertEquals('2025-11', $purchase->billing_cycle);
+    }
+
+    /** @test */
     public function it_returns_error_message_for_invalid_format()
     {
         $invalidArgs = 'invalid_format_string';
