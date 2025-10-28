@@ -32,3 +32,4 @@ public_html/hot
 .env.backup
 .env.production
 .phpactor.json
+.env.testing
