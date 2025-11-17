@@ -95,8 +95,8 @@ class TransactionService
     public function getBalancePerCategory($month = null, $year = null): string
     {
         $month = $month ?? now()->month;
+        $year = $year ?? now()->year;
         $monthName = Carbon::createFromDate($year, $month, 1)->locale('es')->monthName;
-        $year = now()->year;
 
         $start = Carbon::create($year, $month, 1)->startOfMonth();
         $end = Carbon::create($year, $month, 1)->endOfMonth();
