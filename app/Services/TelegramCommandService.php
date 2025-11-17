@@ -110,8 +110,6 @@ class TelegramCommandService
             $month = $monthMap[$key] ?? null;
         }
 
-        logger('**** month '.$month);
-
         $balance = $this->transactionService->getBalancePerCategory($month, $year);
 
         $telegram->sendMessage([
