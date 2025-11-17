@@ -110,11 +110,11 @@ class TelegramCommandService
             $month = $monthMap[$key] ?? null;
         }
 
-        $balance = $this->transactionService->getBalancePerCategory($month, $year);
+        $balanceSummary = $this->transactionService->getBalancePerCategory($month, $year);
 
         $telegram->sendMessage([
             'chat_id' => $chatId,
-            'text' => implode("\n", ['balance' => $balance]),
+            'text' => "Balance:\n{$balanceSummary}",
             'parse_mode' => 'HTML',
         ]);
     }
