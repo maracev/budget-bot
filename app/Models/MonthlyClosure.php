@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 class MonthlyClosure extends Model
 {
     use HasFactory;
-    
+
     protected $fillable = [
         'month',
         'year',
@@ -16,7 +16,7 @@ class MonthlyClosure extends Model
         'outgo',
         'balance',
     ];
-    
+
     protected $casts = [
         'month' => 'integer',
         'year' => 'integer',

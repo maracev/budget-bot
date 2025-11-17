@@ -2,21 +2,22 @@
 
 namespace App\Http\Controllers;
 
-use Telegram\Bot\Api;
+use App\Services\TelegramCommandService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use App\Services\TelegramCommandService;
+use Telegram\Bot\Api;
 
 class TelegramBotController extends Controller
 {
-
     private TelegramCommandService $commandService;
 
-    public function __construct(TelegramCommandService $commandService)
+    private Api $telegram;
+
+    public function __construct(TelegramCommandService $commandService, Api $telegram)
     {
         $this->commandService = $commandService;
+        $this->telegram = $telegram;
     }
-
 
     public function webhook(Request $request)
     {
@@ -24,6 +25,7 @@ class TelegramBotController extends Controller
 
         if (! $expectedToken) {
             Log::error('Telegram webhook secret token is not configured.');
+
             return response('Service misconfigured', 500);
         }
 
@@ -38,14 +40,13 @@ class TelegramBotController extends Controller
             return response('Unauthorized', 401);
         }
 
-        $telegram = new Api(config('app.telegram_bot_token'));
-        $update   = $telegram->getWebhookUpdate();
-        $message  = $update->getMessage();
+        $update = $this->telegram->getWebhookUpdate();
+        $message = $update->getMessage();
 
-        $chat     = $message ? $message->getChat() : null;
-        $textRaw  = $message?->getText() ?? '';
-        $text     = strtolower(ltrim(trim($textRaw), '/'));
-        $chatId   = $chat?->getId();
+        $chat = $message ? $message->getChat() : null;
+        $textRaw = $message?->getText() ?? '';
+        $text = strtolower(ltrim(trim($textRaw), '/'));
+        $chatId = $chat?->getId();
         $username = $chat?->getUsername();
 
         Log::info('Telegram webhook received', [
@@ -71,9 +72,8 @@ class TelegramBotController extends Controller
             'command' => $command,
         ]);
 
-        $this->commandService->execute($telegram, $chatId ?? '', $username, $text);
+        $this->commandService->execute($this->telegram, $chatId ?? '', $username, $text);
 
         return response('OK', 200);
     }
-
 }

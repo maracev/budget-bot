@@ -18,7 +18,7 @@ class TransactionFactory extends Factory
     {
         return [
             'type' => $this->faker->randomElement(['income', 'outcome']),
-            'amount' => $this->faker->randomNumber(4),   
+            'amount' => $this->faker->randomNumber(4),
             'category' => $this->faker->word(),
             'owner_id' => $this->faker->randomNumber(5, true), // Simula un ID de usuario
             'owner_name' => $this->faker->userName(),

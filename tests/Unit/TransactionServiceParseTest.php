@@ -2,10 +2,9 @@
 
 namespace Tests\Unit;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use App\Services\TransactionService;
-use App\Models\Transaction;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
 
 class TransactionServiceParseTest extends TestCase
 {
@@ -57,4 +56,3 @@ class TransactionServiceParseTest extends TestCase
         $this->assertNull($service->getLastSubcategory());
     }
 }
-

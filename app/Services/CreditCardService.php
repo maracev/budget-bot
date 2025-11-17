@@ -3,8 +3,8 @@
 namespace App\Services;
 
 use App\Models\CreditCardPurchase;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Log;
 
 class CreditCardService
 {
@@ -14,14 +14,11 @@ class CreditCardService
      * List monthly installments with details.
      */
 
-
     /**
      * Registers a credit card purchase.
-     * @param string $args
-     * @param string $ownerId
-     * @param mixed $ownerName
-     * @param mixed $errorMessage
-     * @return bool
+     *
+     * @param  mixed  $ownerName
+     * @param  mixed  $errorMessage
      */
     public function registerPurchase(string $args, string $ownerId, ?string $ownerName, ?string &$errorMessage = null): bool
     {
@@ -32,13 +29,14 @@ class CreditCardService
 
         if (! preg_match($pattern, $args, $matches)) {
             $errorMessage = 'Formato inválido. Usar: "tarjeta 1000 Supermercado [Visa] [n_cuotas]".';
+
             return false;
         }
 
-        $amount    = (float) $matches[1];
-        $vendor    = trim($matches[3]);
-        $cardName  = $matches[4] ?? null;
-        $installments = isset($matches[5]) ? (int)$matches[5] : 1;
+        $amount = (float) $matches[1];
+        $vendor = trim($matches[3]);
+        $cardName = $matches[4] ?? null;
+        $installments = isset($matches[5]) ? (int) $matches[5] : 1;
 
         if ($installments < 1) {
             $installments = 1;
@@ -66,33 +64,34 @@ class CreditCardService
                 }
 
                 CreditCardPurchase::create([
-                    'owner_id'     => $ownerId,
-                    'owner_name'   => $ownerName,
-                    'amount'       => $cuota,
-                    'vendor'       => $vendor,
-                    'card_name'    => $cardName,
-                    'billing_cycle'=> $cycle,
+                    'owner_id' => $ownerId,
+                    'owner_name' => $ownerName,
+                    'amount' => $cuota,
+                    'vendor' => $vendor,
+                    'card_name' => $cardName,
+                    'billing_cycle' => $cycle,
                     'purchased_at' => Carbon::now(),
                 ]);
             }
 
             return true;
         } catch (\Throwable $e) {
-            Log::error('Error al registrar compra con tarjeta: ' . $e->getMessage());
+            Log::error('Error al registrar compra con tarjeta: '.$e->getMessage());
             $errorMessage = 'Error interno al registrar la compra de tarjeta.';
+
             return false;
         }
     }
 
     /**
      * Summary of getMonthlyBalance
-     * @param mixed $month
-     * @param mixed $year
-     * @return float
+     *
+     * @param  mixed  $month
+     * @param  mixed  $year
      */
     public function getMonthlyBalance(?int $month = null, ?int $year = null): float
     {
-        $year  = $year  ?? Carbon::now()->year;
+        $year = $year ?? Carbon::now()->year;
         $month = $month ?? Carbon::now()->month;
         $cycle = sprintf('%04d-%02d', $year, $month);
 
@@ -102,13 +101,14 @@ class CreditCardService
 
     /**
      * Summary of listMonthlyPurchases
-     * @param mixed $month
-     * @param mixed $year
+     *
+     * @param  mixed  $month
+     * @param  mixed  $year
      * @return CreditCardPurchase[]|\Illuminate\Database\Eloquent\Collection
      */
     public function listMonthlyPurchases(?int $month = null, ?int $year = null)
     {
-        $year  = $year  ?? Carbon::now()->year;
+        $year = $year ?? Carbon::now()->year;
         $month = $month ?? Carbon::now()->month;
         $cycle = sprintf('%04d-%02d', $year, $month);
 

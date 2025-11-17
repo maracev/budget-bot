@@ -1,4 +1,4 @@
-<?php 
+<?php
 
 return [
     'enero' => 1,

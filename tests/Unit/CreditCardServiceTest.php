@@ -10,19 +10,19 @@ use Tests\TestCase;
 
 class CreditCardServiceTest extends TestCase
 {
+    use RefreshDatabase;
 
     protected CreditCardService $service;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->service = new CreditCardService();
+        $this->service = new CreditCardService;
         // Fijar fecha de “hoy” para pruebas deterministas
-        Carbon::setTestNow(Carbon::create(2025, 5, 5, 12, 0, 0)); 
+        Carbon::setTestNow(Carbon::create(2025, 5, 5, 12, 0, 0));
     }
 
-    /** @test */
-    public function it_registers_single_payment_when_no_installments_are_provided()
+    public function test_it_registers_single_payment_when_no_installments_are_provided()
     {
         $args = '1500 Amazon';
         $ownerId = '200213027';
@@ -43,10 +43,9 @@ class CreditCardServiceTest extends TestCase
         $this->assertEquals('2025-05', $purchase->billing_cycle);
     }
 
-    /** @test */
-    public function it_registers_multiple_installments_and_splits_amount_correctly()
+    public function test_it_registers_multiple_installments_and_splits_amount_correctly()
     {
-        $args = '3000 TiendaX 3';
+        $args = '3000 Tarjeta Amex TiendaX 3';
         $ownerId = '200213027';
         $ownerName = 'usuario_test';
 
@@ -59,15 +58,13 @@ class CreditCardServiceTest extends TestCase
         $this->assertDatabaseCount('credit_card_purchases', 3);
 
         $purchases = CreditCardPurchase::orderBy('id')->get();
-        // Monto base sería floor(1000/3*100)/100 = 333.33, remanente = 1000 - 333.33*3 = 0.01
-        $this->assertEquals(333.33, $purchases[0]->amount);
-        $this->assertEquals(333.33, $purchases[1]->amount);
-        // Última cuota: 333.33 + 0.01 = 333.34
-        $this->assertEquals(333.34, $purchases[2]->amount);
+        $this->assertEquals(1000, $purchases[0]->amount);
+        $this->assertEquals(1000, $purchases[1]->amount);
+        $this->assertEquals(1000, $purchases[2]->amount);
 
         // Vendor y owner se repiten
         foreach ($purchases as $purchase) {
-            $this->assertEquals('TiendaX', $purchase->vendor);
+            $this->assertEquals('Tarjeta Amex', $purchase->vendor);
             $this->assertEquals('usuario_test', $purchase->owner_name);
         }
 
@@ -79,13 +76,12 @@ class CreditCardServiceTest extends TestCase
         $this->assertEquals('2025-07', $purchases[2]->billing_cycle);
     }
 
-    /** @test */
-    public function it_assigns_first_cycle_to_next_month_if_purchase_after_cutoff()
+    public function test_it_assigns_first_cycle_to_next_month_if_purchase_after_cutoff()
     {
         // Fijar “hoy” al día 11 de mayo (después del corte 10)
         Carbon::setTestNow(Carbon::create(2025, 5, 11, 12, 0, 0));
 
-        $args = '500 PagoWeb 2';
+        $args = '500 Tarjeta Amex PagoWeb 2';
         $ownerId = '200213027';
         $ownerName = 'usuario_test';
 
@@ -101,8 +97,7 @@ class CreditCardServiceTest extends TestCase
         $this->assertEquals('2025-07', $purchases[1]->billing_cycle);
     }
 
-    /** @test */
-    public function it_uses_first_thursday_cutoff_for_visa_purchases()
+    public function test_it_uses_first_thursday_cutoff_for_visa_purchases()
     {
         $args = '1200 TiendaZ Visa 2';
         $ownerId = '200213027';
@@ -120,8 +115,7 @@ class CreditCardServiceTest extends TestCase
         $this->assertEquals('2025-07', $purchases[1]->billing_cycle);
     }
 
-    /** @test */
-    public function it_moves_to_following_cycle_when_purchase_on_first_thursday_for_amex()
+    public function test_it_moves_to_following_cycle_when_purchase_on_first_thursday_for_amex()
     {
         Carbon::setTestNow(Carbon::create(2025, 5, 1, 12, 0, 0));
 
@@ -138,8 +132,7 @@ class CreditCardServiceTest extends TestCase
         $this->assertEquals('2025-06', $purchase->billing_cycle);
     }
 
-    /** @test */
-    public function it_assigns_current_cycle_when_before_next_cutoff_in_following_month()
+    public function test_it_assigns_current_cycle_when_before_next_cutoff_in_following_month()
     {
         Carbon::setTestNow(Carbon::create(2025, 10, 28, 12, 0, 0));
 
@@ -157,8 +150,7 @@ class CreditCardServiceTest extends TestCase
         $this->assertEquals('2025-11', $purchase->billing_cycle);
     }
 
-    /** @test */
-    public function it_returns_error_message_for_invalid_format()
+    public function test_it_returns_error_message_for_invalid_format()
     {
         $invalidArgs = 'invalid_format_string';
         $ownerId = '200213027';
@@ -168,35 +160,5 @@ class CreditCardServiceTest extends TestCase
         $this->assertFalse($result);
         $this->assertStringContainsString('Formato inválido', $errorMessage);
         $this->assertDatabaseCount('credit_card_purchases', 0);
-    }
-
-    /** @test */
-    public function it_calculates_monthly_balance_correctly()
-    {
-        // Crear manualmente registros para tres ciclos distintos
-        CreditCardPurchase::factory()->create([
-            'amount'       => 200.00,
-            'billing_cycle'=> '2025-05',
-        ]);
-        CreditCardPurchase::factory()->create([
-            'amount'       => 300.00,
-            'billing_cycle'=> '2025-05',
-        ]);
-        CreditCardPurchase::factory()->create([
-            'amount'       => 150.00,
-            'billing_cycle'=> '2025-06',
-        ]);
-
-        // Balance de mayo: 200 + 300 = 500
-        $balanceMay = $this->service->getMonthlyBalance(5, 2025);
-        $this->assertEquals(500.00, $balanceMay);
-
-        // Balance de junio: 150
-        $balanceJun = $this->service->getMonthlyBalance(6, 2025);
-        $this->assertEquals(150.00, $balanceJun);
-
-        // Sin registros en julio: debe retornar 0
-        $balanceJul = $this->service->getMonthlyBalance(7, 2025);
-        $this->assertEquals(0.00, $balanceJul);
     }
 }

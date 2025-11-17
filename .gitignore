@@ -5,6 +5,7 @@
 /public/storage
 /storage/*.key
 /vendor
+/reports
 .env
 .env.backup
 .env.production
@@ -31,5 +32,6 @@ public_html/hot
 /storage/pail
 .env.backup
 .env.production
+.env.example
 .phpactor.json
 .env.testing

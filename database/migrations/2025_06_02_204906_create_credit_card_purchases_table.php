@@ -21,7 +21,7 @@ return new class extends Migration
             $table->string('billing_cycle');
             $table->timestamp('purchased_at')->useCurrent();
             $table->timestamps();
-        
+
             $table->index(['owner_id']);
             $table->index(['billing_cycle']);
         });

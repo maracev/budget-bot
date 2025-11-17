@@ -2,11 +2,10 @@
 
 namespace Tests\Unit;
 
-use Tests\TestCase;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use App\Services\TelegramCommandService;
-use App\Services\TransactionService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Telegram\Bot\Api;
+use Tests\TestCase;
 
 class TelegramCommandServiceTest extends TestCase
 {
@@ -22,8 +21,9 @@ class TelegramCommandServiceTest extends TestCase
         $api->shouldReceive('sendMessage')
             ->once()
             ->withArgs(function ($payload) {
-                $this->assertEquals('123', (string)$payload['chat_id']);
+                $this->assertEquals('123', (string) $payload['chat_id']);
                 $this->assertStringContainsString('Registrado: gasto de $500 en servicios / metrogas', $payload['text']);
+
                 return true;
             });
 
@@ -47,9 +47,10 @@ class TelegramCommandServiceTest extends TestCase
         $api->shouldReceive('sendMessage')
             ->once()
             ->withArgs(function ($payload) {
-                $this->assertEquals('123', (string)$payload['chat_id']);
+                $this->assertEquals('123', (string) $payload['chat_id']);
                 $this->assertStringContainsString('Registrado: gasto de $800 en supermercado', $payload['text']);
                 $this->assertStringNotContainsString('/', $payload['text']);
+
                 return true;
             });
 
@@ -64,4 +65,3 @@ class TelegramCommandServiceTest extends TestCase
         ]);
     }
 }
-

@@ -2,13 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\TelegramBotController;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Http;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
+use Mockery;
 use Tests\TestCase;
-use App\Models\Movimiento;
-use App\Models\Transaction;
-use Illuminate\Support\Facades\Log;
 
 class TelegramWebhookTest extends TestCase
 {
@@ -18,6 +17,12 @@ class TelegramWebhookTest extends TestCase
     {
         parent::setUp();
         Artisan::call('migrate');
+    }
+
+    protected function tearDown(): void
+    {
+        Mockery::close();
+        parent::tearDown();
     }
 
     public function test_it_stores_expense_from_telegram_message()
@@ -32,8 +37,13 @@ class TelegramWebhookTest extends TestCase
             ],
         ]);
 
-        $telegram = new \Telegram\Bot\Api('fake-token');
-        $telegram->setWebhookUpdate($fakeUpdate);
+        $telegram = Mockery::mock(\Telegram\Bot\Api::class);
+        $telegram->shouldReceive('getWebhookUpdate')
+            ->once()
+            ->andReturn($fakeUpdate);
+        $telegram->shouldReceive('sendMessage')
+            ->once()
+            ->andReturn(new \Telegram\Bot\Objects\Message([]));
 
         // Reemplaza la instancia que usa el controlador por la fake
         $this->app->instance(\Telegram\Bot\Api::class, $telegram);
@@ -44,15 +54,17 @@ class TelegramWebhookTest extends TestCase
             'app.my_telegram_chat_id' => 123456,
         ]);
 
-        // Llama al endpoint (no importa el payload real, ya inyectamos el update)
-        $this->post('/telegram/webhook', [], [
-            'X-Telegram-Bot-Api-Secret-Token' => 'secret-token',
-        ])->assertOk();
+        $request = Request::create('/telegram/webhook', 'POST');
+        $request->headers->set('X-Telegram-Bot-Api-Secret-Token', 'secret-token');
+
+        $response = $this->app->make(TelegramBotController::class)->webhook($request);
+
+        $this->assertEquals(200, $response->getStatusCode());
 
         // Verifica que se haya creado la transacción
-        $this->assertDatabaseHas('movimientos', [
-            'chat_id' => 123456,
-            'type' => 'gasto',
+        $this->assertDatabaseHas('transactions', [
+            'owner_id' => 123456,
+            'type' => 'outgo',
             'amount' => 500,
             'category' => 'comida',
         ]);

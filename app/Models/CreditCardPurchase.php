@@ -18,5 +18,4 @@ class CreditCardPurchase extends Model
         'billing_cycle',
         'purchased_at',
     ];
-    
 }

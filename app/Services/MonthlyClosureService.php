@@ -1,11 +1,9 @@
-<?php 
+<?php
 
 namespace App\Services;
 
-use App\Models\Movimiento;
 use App\Models\MonthlyClosure;
 use App\Models\Transaction;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 
 class MonthlyClosureService
@@ -15,7 +13,8 @@ class MonthlyClosureService
         $existing = MonthlyClosure::where('month', $month)->where('year', $year)->first();
 
         if ($existing) {
-            Log::info('Monthly closure already exists', [''=> $month,'year'=> $year]);
+            Log::info('Monthly closure already exists', ['' => $month, 'year' => $year]);
+
             return $existing;
         }
 
