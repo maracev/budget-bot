@@ -122,6 +122,26 @@ class TransactionService
         return $message;
     }
 
+    public function getFilteredTransactions(?string $type, ?string $category, int $month, int $year)
+    {
+        $start = Carbon::create($year, $month, 1)->startOfMonth();
+        $end = Carbon::create($year, $month, 1)->endOfMonth();
+
+        $query = Transaction::query()
+            ->whereBetween('created_at', [$start, $end])
+            ->orderBy('created_at');
+
+        if ($type) {
+            $query->where('type', $type);
+        }
+
+        if ($category) {
+            $query->where('category', $category);
+        }
+
+        return $query->get();
+    }
+
     public function getLastAmount(): int
     {
         return $this->lastAmount;

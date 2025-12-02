@@ -4,6 +4,7 @@ namespace App\Services;
 
 use Illuminate\Support\Carbon;
 use Telegram\Bot\Api;
+use App\Validators\FiltroTxValidator;
 
 class TelegramCommandService
 {
@@ -13,14 +14,18 @@ class TelegramCommandService
 
     private CreditCardService $creditCardService;
 
+    private FiltroTxValidator $filtroTxValidator;
+
     public function __construct(
         TransactionService $transactionService,
         MonthlyClosureService $closureService,
-        CreditCardService $creditCardService
+        CreditCardService $creditCardService,
+        FiltroTxValidator $filtroTxValidator
     ) {
         $this->transactionService = $transactionService;
         $this->closureService = $closureService;
         $this->creditCardService = $creditCardService;
+        $this->filtroTxValidator = $filtroTxValidator;
     }
 
     /**
@@ -34,6 +39,7 @@ class TelegramCommandService
             'ingreso', 'gasto' => $this->handleTransaction($telegram, $chatId, $username, $command, $args),
             'balance' => $this->handleBalance($telegram, $chatId),
             'filtro_balance' => $this->handleFilteredBalance($telegram, $chatId, $args),
+            'filtro_tx' => $this->handleFilteredTransactions($telegram, $chatId, $args),
             'cierre' => $this->handleClosure($telegram, $chatId, $args),
             'tarjeta' => $this->handleCreditCard($telegram, $chatId, $username, $args),
             'tarjeta_balance' => $this->handleCreditCardBalance($telegram, $chatId, $args),
@@ -227,6 +233,7 @@ class TelegramCommandService
                          "• gasto <monto> <categoría> [<rubro>]\n".
                          "• balance\n".
                          "• filtro_balance[<mes>]\n".
+                         "• filtro_tx [tipo] [categoria] [mes] [anio]\n".
                          "• cierre [<mes>]\n".
                          "• tarjeta <monto> <vendor> [<card_name>] [<n_cuotas>]\n".
                          '• tarjeta_balance [<mes>]',
@@ -248,5 +255,87 @@ class TelegramCommandService
             'year' => $year,
             'monthName' => Carbon::createFromDate($year, $month, 1)->locale('es')->monthName,
         ];
+    }
+
+    private function handleFilteredTransactions(Api $telegram, string $chatId, string $args): void
+    {
+        $args = trim($args);
+
+        if ($args === '') {
+            $telegram->sendMessage([
+                'chat_id' => $chatId,
+                'text' => 'Indicá al menos un filtro: tipo, categoría o período. Ej: "filtro_tx gasto mascotas mayo 2024".',
+            ]);
+
+            return;
+        }
+
+        $parsed = $this->filtroTxValidator->parse($args);
+
+        if (isset($parsed['error'])) {
+            $telegram->sendMessage([
+                'chat_id' => $chatId,
+                'text' => $parsed['error'],
+            ]);
+
+            return;
+        }
+
+        $type = $parsed['type'];
+        $category = $parsed['category'];
+        $month = $parsed['month'];
+        $year = $parsed['year'];
+        $monthProvided = $parsed['month_provided'];
+        $yearProvided = $parsed['year_provided'];
+        $inverseTypeMap = $parsed['inverse_type_map'];
+
+        if ($category === null && $type === null && ! $monthProvided && ! $yearProvided) {
+            $telegram->sendMessage([
+                'chat_id' => $chatId,
+                'text' => 'Indicá al menos un filtro: tipo, categoría o período.',
+            ]);
+
+            return;
+        }
+
+        $transactions = $this->transactionService->getFilteredTransactions($type, $category, (int) $month, (int) $year);
+
+        if ($transactions->isEmpty()) {
+            $telegram->sendMessage([
+                'chat_id' => $chatId,
+                'text' => 'Sin transacciones para esos filtros.',
+            ]);
+
+            return;
+        }
+
+        $monthName = Carbon::createFromDate($year, $month, 1)->locale('es')->monthName;
+
+        $titleParts = ["Transacciones {$monthName} {$year}"];
+        if ($type) {
+            $titleParts[] = $inverseTypeMap[$type] ?? $type;
+        }
+        if ($category) {
+            $titleParts[] = $category;
+        }
+
+        $lines = [implode(' / ', $titleParts)];
+
+        $total = 0;
+        foreach ($transactions as $tx) {
+            $sign = $tx->type === 'income' ? '+' : '-';
+            $formattedAmount = "{$sign}$".$tx->amount;
+            $label = $tx->subcategory ? "{$tx->category}/{$tx->subcategory}" : $tx->category;
+            $lines[] = "{$tx->created_at->format('Y-m-d')}  {$label}  {$formattedAmount}";
+
+            $total += $tx->type === 'income' ? $tx->amount : -$tx->amount;
+        }
+
+        $lines[] = "Total: {$total} (".count($transactions)." tx)";
+
+        $telegram->sendMessage([
+            'chat_id' => $chatId,
+            'text' => implode("\n", $lines),
+        ]);
     }
 }
