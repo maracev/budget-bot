@@ -2,9 +2,9 @@
 
 namespace App\Services;
 
+use App\Validators\FiltroTxValidator;
 use Illuminate\Support\Carbon;
 use Telegram\Bot\Api;
-use App\Validators\FiltroTxValidator;
 
 class TelegramCommandService
 {
@@ -331,7 +331,7 @@ class TelegramCommandService
             $total += $tx->type === 'income' ? $tx->amount : -$tx->amount;
         }
 
-        $lines[] = "Total: {$total} (".count($transactions)." tx)";
+        $lines[] = "Total: {$total} (".count($transactions).' tx)';
 
         $telegram->sendMessage([
             'chat_id' => $chatId,

@@ -33,18 +33,21 @@ class FiltroTxValidator
 
             if (! $typeRaw && (isset($typeMap[$normalized]) || isset($inverseTypeMap[$normalized]))) {
                 $typeRaw = $normalized;
+
                 continue;
             }
 
             if (! $month && (isset($monthMap[$normalized]) || (is_numeric($normalized) && (int) $normalized >= 1 && (int) $normalized <= 12))) {
                 $month = isset($monthMap[$normalized]) ? $monthMap[$normalized] : (int) $normalized;
                 $monthProvided = true;
+
                 continue;
             }
 
             if (! $year && is_numeric($normalized) && strlen($normalized) === 4) {
                 $year = (int) $normalized;
                 $yearProvided = true;
+
                 continue;
             }
 
