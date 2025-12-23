@@ -16,6 +16,8 @@ class TelegramCommandService
 
     private FiltroTxValidator $filtroTxValidator;
 
+    private const OUTGO = 'gasto';
+
     public function __construct(
         TransactionService $transactionService,
         MonthlyClosureService $closureService,
@@ -77,10 +79,11 @@ class TelegramCommandService
         $subcategory = $this->transactionService->getLastSubcategory();
 
         $where = $subcategory ? "{$category} / {$subcategory}" : $category;
+        $displayAmount = $rawType === self::OUTGO ? abs($amount) : $amount;
 
         $telegram->sendMessage([
             'chat_id' => $chatId,
-            'text' => "Registrado: {$rawType} de \${$amount} en {$where}",
+            'text' => "Registrado: {$rawType} de \${$displayAmount} en {$where}",
         ]);
     }
 
@@ -323,12 +326,12 @@ class TelegramCommandService
 
         $total = 0;
         foreach ($transactions as $tx) {
-            $sign = $tx->type === 'income' ? '+' : '-';
-            $formattedAmount = "{$sign}$".$tx->amount;
+            $sign = $tx->amount >= 0 ? '+' : '-';
+            $formattedAmount = "{$sign}$".abs($tx->amount);
             $label = $tx->subcategory ? "{$tx->category}/{$tx->subcategory}" : $tx->category;
             $lines[] = "{$tx->created_at->format('Y-m-d')}  {$label}  {$formattedAmount}";
 
-            $total += $tx->type === 'income' ? $tx->amount : -$tx->amount;
+            $total += $tx->amount;
         }
 
         $lines[] = "Total: {$total} (".count($transactions).' tx)';

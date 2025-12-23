@@ -21,14 +21,14 @@ class TransactionServiceParseTest extends TestCase
 
         $this->assertDatabaseHas('transactions', [
             'type' => 'outgo',
-            'amount' => 500,
+            'amount' => -500,
             'category' => 'servicios',
             'subcategory' => 'metrogas',
             'owner_id' => 123,
             'owner_name' => 'maria',
         ]);
 
-        $this->assertSame(500, $service->getLastAmount());
+        $this->assertSame(-500, $service->getLastAmount());
         $this->assertSame('servicios', $service->getLastCategory());
         $this->assertSame('metrogas', $service->getLastSubcategory());
     }
@@ -44,14 +44,14 @@ class TransactionServiceParseTest extends TestCase
 
         $this->assertDatabaseHas('transactions', [
             'type' => 'outgo',
-            'amount' => 800,
+            'amount' => -800,
             'category' => 'supermercado',
             'subcategory' => null,
             'owner_id' => 123,
             'owner_name' => 'maria',
         ]);
 
-        $this->assertSame(800, $service->getLastAmount());
+        $this->assertSame(-800, $service->getLastAmount());
         $this->assertSame('supermercado', $service->getLastCategory());
         $this->assertNull($service->getLastSubcategory());
     }

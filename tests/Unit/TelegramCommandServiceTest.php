@@ -11,8 +11,7 @@ class TelegramCommandServiceTest extends TestCase
 {
     use RefreshDatabase;
 
-    /** @test */
-    public function execute_records_transaction_with_category_and_subcategory_and_replies()
+    public function test_execute_records_transaction_with_category_and_subcategory_and_replies()
     {
         $service = app(TelegramCommandService::class);
 
@@ -32,14 +31,13 @@ class TelegramCommandServiceTest extends TestCase
         $this->assertDatabaseHas('transactions', [
             'owner_id' => 123,
             'type' => 'outgo',
-            'amount' => 500,
+            'amount' => -500,
             'category' => 'servicios',
             'subcategory' => 'metrogas',
         ]);
     }
 
-    /** @test */
-    public function execute_records_transaction_without_subcategory_and_replies()
+    public function test_execute_records_transaction_without_subcategory_and_replies()
     {
         $service = app(TelegramCommandService::class);
 
@@ -59,7 +57,7 @@ class TelegramCommandServiceTest extends TestCase
         $this->assertDatabaseHas('transactions', [
             'owner_id' => 123,
             'type' => 'outgo',
-            'amount' => 800,
+            'amount' => -800,
             'category' => 'supermercado',
             'subcategory' => null,
         ]);

@@ -28,13 +28,13 @@ class MonthlyClosureService
             ->whereYear('created_at', $year)
             ->sum('amount');
 
-        $balance = $incomes - $outgoes;
+        $balance = $incomes + $outgoes;
 
         return MonthlyClosure::create([
             'month' => $month,
             'year' => $year,
             'income' => $incomes,
-            'outgo' => $outgoes,
+            'outgo' => abs($outgoes),
             'balance' => $balance,
         ]);
     }

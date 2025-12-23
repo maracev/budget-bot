@@ -65,7 +65,7 @@ class TelegramWebhookTest extends TestCase
         $this->assertDatabaseHas('transactions', [
             'owner_id' => 123456,
             'type' => 'outgo',
-            'amount' => 500,
+            'amount' => -500,
             'category' => 'comida',
         ]);
     }

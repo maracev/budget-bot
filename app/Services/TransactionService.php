@@ -46,6 +46,10 @@ class TransactionService
         $category = $parts[0] ?? '';
         $subcategory = isset($parts[1]) ? trim($parts[1]) : null;
 
+        if ($type === 'outgo') {
+            $amount *= -1;
+        }
+
         try {
             Transaction::create([
                 'type' => $type,
@@ -83,11 +87,11 @@ class TransactionService
             ->whereMonth('created_at', Carbon::now()->month)
             ->sum('amount');
 
-        $balance = $incomes - $outgoes;
+        $balance = $incomes + $outgoes;
 
         return [
             'ingresos' => $incomes,
-            'gastos' => $outgoes,
+            'gastos' => abs($outgoes),
             'saldo' => $balance,
         ];
     }
