@@ -134,22 +134,33 @@ class TelegramCommandService
     private function handleClosure(Api $telegram, string $chatId, string $args): void
     {
         $monthMap = config('month_map');
-        $year = $this->getCurrentDate()['year'];
+        $currentDate = $this->getCurrentDate();
+        $year = $currentDate['year'];
+        $month = null;
+        $monthName = null;
 
-        if (empty($args)) {
-            // Cierra mes actual
-            $month = Carbon::now()->month;
+        $args = trim($args);
+
+        if ($args === '') {
+            // Cierra mes actual por defecto
+            $month = $currentDate['month'];
             $monthName = Carbon::createFromDate($year, $month, 1)->locale('es')->monthName;
         } else {
-            $key = trim($args);
-            $month = $monthMap[$key] ?? null;
-            $monthName = $key;
+            $parts = preg_split('/\s+/', $args, -1, PREG_SPLIT_NO_EMPTY);
+            $monthKey = $parts[0] ?? null;
+            $month = $monthKey ? $monthMap[$monthKey] ?? null : null;
+            $monthName = $monthKey;
+
+            $maybeYear = $parts[1] ?? null;
+            if ($maybeYear && ctype_digit($maybeYear) && strlen($maybeYear) === 4) {
+                $year = (int) $maybeYear;
+            }
         }
 
         if (! $month) {
             $telegram->sendMessage([
                 'chat_id' => $chatId,
-                'text' => 'Mes inválido. Usar: “cierre mayo” o simplemente “cierre” para mes actual.',
+                'text' => 'Mes inválido. Usar: “cierre mayo”, “cierre diciembre 2025” o simplemente “cierre” para el mes actual.',
             ]);
 
             return;
