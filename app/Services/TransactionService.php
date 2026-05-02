@@ -118,7 +118,7 @@ class TransactionService
             ])
             ->toArray();
 
-        $message = "<b>Resumen del mes $monthName</b> \n\n";
+        $message = "<b>Resumen de $monthName $year</b> \n\n";
         foreach ($balance as $row) {
             $message .= "<b>{$row['tipo']}</b> - {$row['categoria']}: {$row['total']} ({$row['transacciones']} tx)\n";
         }

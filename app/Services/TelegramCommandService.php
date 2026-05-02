@@ -109,14 +109,45 @@ class TelegramCommandService
     private function handleFilteredBalance(Api $telegram, string $chatId, string $args): void
     {
         $monthMap = config('month_map');
-
         $currentDate = $this->getCurrentDate();
         $year = $currentDate['year'];
         $month = $currentDate['month'];
 
-        if (! empty($args)) {
-            $key = trim($args);
-            $month = $monthMap[$key] ?? null;
+        $args = trim($args);
+
+        if ($args !== '') {
+            $parts = preg_split('/\\s+/', $args, -1, PREG_SPLIT_NO_EMPTY);
+            $monthKey = $parts[0] ?? null;
+            $maybeYear = $parts[1] ?? null;
+
+            if ($monthKey) {
+                $normalized = strtolower($monthKey);
+                if (isset($monthMap[$normalized])) {
+                    $month = $monthMap[$normalized];
+                } elseif (ctype_digit($normalized) && (int) $normalized >= 1 && (int) $normalized <= 12) {
+                    $month = (int) $normalized;
+                } else {
+                    $telegram->sendMessage([
+                        'chat_id' => $chatId,
+                        'text' => 'Mes inválido. Usar “filtro_balance mayo” o “filtro_balance mayo 2024”.',
+                    ]);
+
+                    return;
+                }
+            }
+
+            if ($maybeYear !== null) {
+                if (ctype_digit($maybeYear) && strlen($maybeYear) === 4) {
+                    $year = (int) $maybeYear;
+                } else {
+                    $telegram->sendMessage([
+                        'chat_id' => $chatId,
+                        'text' => 'Año inválido. Usar un año con 4 dígitos. Ej: “filtro_balance mayo 2024”.',
+                    ]);
+
+                    return;
+                }
+            }
         }
 
         $balanceSummary = $this->transactionService->getBalancePerCategory($month, $year);
@@ -246,7 +277,7 @@ class TelegramCommandService
                          "• ingreso <monto> <categoría> [<rubro>]\n".
                          "• gasto <monto> <categoría> [<rubro>]\n".
                          "• balance\n".
-                         "• filtro_balance[<mes>]\n".
+                         "• filtro_balance [<mes> [<anio>]]\n".
                          "• filtro_tx [tipo] [categoria] [mes] [anio]\n".
                          "• cierre [<mes>]\n".
                          "• tarjeta <monto> <vendor> [<card_name>] [<n_cuotas>]\n".
