@@ -160,4 +160,42 @@ class TransactionService
     {
         return $this->lastSubcategory !== '' ? $this->lastSubcategory : null;
     }
+
+    public function getCategorySummary(int $month, int $year, ?string $category = null, ?string $subcategory = null): string
+    {
+
+        $startDate = Carbon::create($year, $month)->startOfMonth();
+        $endDate = Carbon::create($year, $month)->addMonth()->startOfMonth();
+
+        $query = Transaction::query()
+            ->whereBetween('created_at', [$startDate, $endDate]);
+
+        if ($category) {
+            $query->where('category', $category);
+        }
+
+        if ($subcategory) {
+            $query->where('subcategory', $subcategory);
+        }
+
+        $result = $query
+            ->selectRaw('type, category, subcategory, SUM(amount) as total')
+            ->groupBy('type', 'category', 'subcategory')
+            ->get();
+
+        if ($result->isEmpty()) {
+            return 'No hay datos para ese filtro.';
+        }
+
+        return $result->map(function ($row) {
+
+            return sprintf(
+                "%s → %s / %s: $%s",
+                strtoupper($row->type),
+                $row->category,
+                $row->subcategory ?? '-',
+                number_format($row->total, 0, ',', '.')
+            );
+        })->implode("\n");
+    }
 }

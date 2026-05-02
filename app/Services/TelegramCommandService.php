@@ -43,6 +43,7 @@ class TelegramCommandService
             'filtro_balance' => $this->handleFilteredBalance($telegram, $chatId, $args),
             'filtro_tx' => $this->handleFilteredTransactions($telegram, $chatId, $args),
             'cierre' => $this->handleClosure($telegram, $chatId, $args),
+            'resumen' => $this->handleCategorySummary($telegram, $chatId, $args),
             'tarjeta' => $this->handleCreditCard($telegram, $chatId, $username, $args),
             'tarjeta_balance' => $this->handleCreditCardBalance($telegram, $chatId, $args),
             default => $this->sendUnknownCommand($telegram, $chatId),
@@ -381,6 +382,95 @@ class TelegramCommandService
         $telegram->sendMessage([
             'chat_id' => $chatId,
             'text' => implode("\n", $lines),
+        ]);
+    }
+
+    private function handleCategorySummary(Api $telegram, string $chatId, string $args): void
+    {
+        $monthMap = config('month_map');
+        $currentDate = $this->getCurrentDate();
+
+        $year = $currentDate['year'];
+        $month = $currentDate['month'];
+
+        $category = null;
+        $subcategory = null;
+
+        $args = trim($args);
+
+        if ($args !== '') {
+
+            $parts = preg_split('/\\s+/', $args, -1, PREG_SPLIT_NO_EMPTY);
+
+            $monthKey = $parts[0] ?? null;
+            $maybeYear = $parts[1] ?? null;
+            $maybeCategory = $parts[2] ?? null;
+            $maybeSubcategory = $parts[3] ?? null;
+
+            /**
+             * MES
+             */
+            if ($monthKey) {
+
+                $normalized = strtolower($monthKey);
+
+                if (isset($monthMap[$normalized])) {
+                    $month = $monthMap[$normalized];
+                } elseif (ctype_digit($normalized) && (int)$normalized >= 1 && (int)$normalized <= 12) {
+                    $month = (int)$normalized;
+                } else {
+
+                    $telegram->sendMessage([
+                        'chat_id' => $chatId,
+                        'text' => 'Mes inválido. Ej: resumen mayo o resumen mayo 2024 supermercado',
+                    ]);
+
+                    return;
+                }
+            }
+
+            /**
+             * AÑO
+             */
+            if ($maybeYear !== null && ctype_digit($maybeYear) && strlen($maybeYear) === 4) {
+
+                $year = (int)$maybeYear;
+            } elseif ($maybeYear !== null && !ctype_alpha($maybeYear)) {
+
+                $telegram->sendMessage([
+                    'chat_id' => $chatId,
+                    'text' => 'Año inválido. Ej: resumen mayo 2024',
+                ]);
+
+                return;
+            }
+
+            /**
+             * CATEGORY
+             */
+            if ($maybeCategory !== null) {
+                $category = strtolower($maybeCategory);
+            }
+
+            /**
+             * SUBCATEGORY
+             */
+            if ($maybeSubcategory !== null) {
+                $subcategory = strtolower($maybeSubcategory);
+            }
+        }
+
+        $summary = $this->transactionService->getCategorySummary(
+            month: $month,
+            year: $year,
+            category: $category,
+            subcategory: $subcategory
+        );
+
+        $telegram->sendMessage([
+            'chat_id' => $chatId,
+            'text' => "Resumen:\n{$summary}",
+            'parse_mode' => 'HTML',
         ]);
     }
 }
