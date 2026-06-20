@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Category;
 use App\Validators\FiltroTxValidator;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Telegram\Bot\Api;
 
 class TelegramCommandService
@@ -36,7 +37,21 @@ class TelegramCommandService
      */
     public function execute(Api $telegram, string $chatId, ?string $username, string $text): void
     {
+        $conversation = Cache::get("telegram_conversation_{$chatId}");
+
+        if ($conversation) {
+            $this->handleConversation($telegram, $chatId, $username, $text, $conversation);
+
+            return;
+        }
+
         [$command, $args] = $this->parseCommand($text);
+
+        if (in_array($command, ['gasto', 'ingreso']) && $args === '') {
+            $this->startConversation($telegram, $chatId, $command);
+
+            return;
+        }
 
         match ($command) {
             'ingreso', 'gasto' => $this->handleTransaction($telegram, $chatId, $username, $command, $args),
@@ -298,6 +313,108 @@ class TelegramCommandService
         $telegram->sendMessage([
             'chat_id' => $chatId,
             'text' => "Balance tarjeta para {$monthName} {$year}: \${$balance}",
+        ]);
+    }
+
+    private function startConversation(Api $telegram, string $chatId, string $type): void
+    {
+        Cache::put("telegram_conversation_{$chatId}", [
+            'step' => 'amount',
+            'type' => $type,
+        ], now()->addHour());
+
+        $telegram->sendMessage([
+            'chat_id' => $chatId,
+            'text' => '¿Cuál es el monto?',
+        ]);
+    }
+
+    private function handleConversation(Api $telegram, string $chatId, ?string $username, string $text, array $conversation): void
+    {
+        if (strtolower(trim($text)) === 'cancelar') {
+            Cache::forget("telegram_conversation_{$chatId}");
+
+            $telegram->sendMessage([
+                'chat_id' => $chatId,
+                'text' => 'Operación cancelada.',
+            ]);
+
+            return;
+        }
+
+        $step = $conversation['step'];
+
+        if ($step === 'amount') {
+            $this->handleAmountStep($telegram, $chatId, $username, $text, $conversation['type']);
+
+            return;
+        }
+
+        if ($step === 'category') {
+            $this->handleCategoryStep($telegram, $chatId, $username, $text, $conversation);
+        }
+    }
+
+    private function handleAmountStep(Api $telegram, string $chatId, ?string $username, string $text, string $type): void
+    {
+        if (! ctype_digit($text) || (int) $text <= 0) {
+            $telegram->sendMessage([
+                'chat_id' => $chatId,
+                'text' => 'Monto inválido. Ingresá un número positivo.',
+            ]);
+
+            return;
+        }
+
+        $amount = (int) $text;
+
+        Cache::put("telegram_conversation_{$chatId}", [
+            'step' => 'category',
+            'type' => $type,
+            'amount' => $amount,
+        ], now()->addHour());
+
+        $telegram->sendMessage([
+            'chat_id' => $chatId,
+            'text' => '¿En qué categoría?',
+        ]);
+    }
+
+    private function handleCategoryStep(Api $telegram, string $chatId, ?string $username, string $text, array $conversation): void
+    {
+        $type = $conversation['type'];
+        $amount = $conversation['amount'];
+        $category = trim(strtolower($text));
+
+        if ($category === '') {
+            $telegram->sendMessage([
+                'chat_id' => $chatId,
+                'text' => 'Categoría inválida. Ingresá una categoría válida.',
+            ]);
+
+            return;
+        }
+
+        $args = "{$amount} {$category}";
+
+        if (! $this->transactionService->register($type, $args, $chatId, $username, $errorMessage)) {
+            Cache::forget("telegram_conversation_{$chatId}");
+
+            $telegram->sendMessage([
+                'chat_id' => $chatId,
+                'text' => $errorMessage,
+            ]);
+
+            return;
+        }
+
+        Cache::forget("telegram_conversation_{$chatId}");
+
+        $displayAmount = $type === self::OUTGO ? $amount : $amount;
+
+        $telegram->sendMessage([
+            'chat_id' => $chatId,
+            'text' => "Registrado: {$type} de \${$displayAmount} en {$category}",
         ]);
     }
 

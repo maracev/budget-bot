@@ -6,6 +6,7 @@ use App\Models\Transaction;
 use App\Services\TelegramCommandService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Telegram\Bot\Api;
 use Tests\TestCase;
 
@@ -185,5 +186,155 @@ class TelegramCommandServiceTest extends TestCase
             });
 
         $service->execute($apiYear, '999', null, 'filtro_balance marzo 20a4');
+    }
+
+    public function test_slash_gasto_starts_conversation()
+    {
+        $service = app(TelegramCommandService::class);
+
+        $api = \Mockery::mock(Api::class);
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->withArgs(function ($payload) {
+                $this->assertSame('123', (string) $payload['chat_id']);
+                $this->assertSame('¿Cuál es el monto?', $payload['text']);
+
+                return true;
+            });
+
+        $service->execute($api, '123', 'maria', 'gasto');
+
+        $state = Cache::get('telegram_conversation_123');
+        $this->assertNotNull($state);
+        $this->assertSame('amount', $state['step']);
+        $this->assertSame('gasto', $state['type']);
+    }
+
+    public function test_valid_amount_advances_to_category_step()
+    {
+        $service = app(TelegramCommandService::class);
+
+        $api = \Mockery::mock(Api::class);
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->ordered()
+            ->withArgs(fn ($p) => $p['text'] === '¿Cuál es el monto?');
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->ordered()
+            ->withArgs(fn ($p) => $p['text'] === '¿En qué categoría?');
+
+        $service->execute($api, '123', 'maria', 'gasto');
+        $service->execute($api, '123', 'maria', '500');
+
+        $state = Cache::get('telegram_conversation_123');
+        $this->assertSame('category', $state['step']);
+        $this->assertSame(500, $state['amount']);
+    }
+
+    public function test_invalid_amount_asks_to_retry()
+    {
+        $service = app(TelegramCommandService::class);
+
+        $api = \Mockery::mock(Api::class);
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->withArgs(fn ($p) => $p['text'] === '¿Cuál es el monto?');
+
+        $service->execute($api, '123', 'maria', 'gasto');
+
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->withArgs(function ($payload) {
+                $this->assertStringContainsString('Monto inválido', $payload['text']);
+
+                return true;
+            });
+
+        $service->execute($api, '123', 'maria', 'abc');
+
+        $state = Cache::get('telegram_conversation_123');
+        $this->assertSame('amount', $state['step']);
+    }
+
+    public function test_expense_is_registered_when_category_is_chosen()
+    {
+        $service = app(TelegramCommandService::class);
+
+        $api = \Mockery::mock(Api::class);
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->withArgs(fn ($p) => $p['text'] === '¿Cuál es el monto?');
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->withArgs(fn ($p) => $p['text'] === '¿En qué categoría?');
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->withArgs(function ($payload) {
+                $this->assertStringContainsString('Registrado: gasto de $500 en supermercado', $payload['text']);
+
+                return true;
+            });
+
+        $service->execute($api, '123', 'maria', 'gasto');
+        $service->execute($api, '123', 'maria', '500');
+        $service->execute($api, '123', 'maria', 'supermercado');
+
+        $this->assertDatabaseHas('transactions', [
+            'owner_id' => 123,
+            'type' => 'outgo',
+            'amount' => -500,
+            'category' => 'supermercado',
+            'owner_name' => 'maria',
+        ]);
+
+        $this->assertNull(Cache::get('telegram_conversation_123'));
+    }
+
+    public function test_linear_gasto_still_works()
+    {
+        $service = app(TelegramCommandService::class);
+
+        $api = \Mockery::mock(Api::class);
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->withArgs(function ($payload) {
+                $this->assertStringContainsString('Registrado: gasto de $500 en servicios / metrogas', $payload['text']);
+
+                return true;
+            });
+
+        $service->execute($api, '123', 'maria', 'gasto 500 servicios metrogas');
+
+        $this->assertDatabaseHas('transactions', [
+            'owner_id' => 123,
+            'type' => 'outgo',
+            'amount' => -500,
+            'category' => 'servicios',
+            'subcategory' => 'metrogas',
+        ]);
+
+        $state = Cache::get('telegram_conversation_123');
+        $this->assertNull($state);
+    }
+
+    public function test_cancelar_clears_conversation()
+    {
+        $service = app(TelegramCommandService::class);
+
+        $api = \Mockery::mock(Api::class);
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->ordered()
+            ->withArgs(fn ($p) => $p['text'] === '¿Cuál es el monto?');
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->ordered()
+            ->withArgs(fn ($p) => $p['text'] === 'Operación cancelada.');
+
+        $service->execute($api, '123', 'maria', 'gasto');
+        $service->execute($api, '123', 'maria', 'cancelar');
+
+        $this->assertNull(Cache::get('telegram_conversation_123'));
     }
 }
