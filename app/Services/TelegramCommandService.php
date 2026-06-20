@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Category;
 use App\Validators\FiltroTxValidator;
 use Illuminate\Support\Carbon;
 use Telegram\Bot\Api;
@@ -46,6 +47,7 @@ class TelegramCommandService
             'resumen' => $this->handleCategorySummary($telegram, $chatId, $args),
             'tarjeta' => $this->handleCreditCard($telegram, $chatId, $username, $args),
             'tarjeta_balance' => $this->handleCreditCardBalance($telegram, $chatId, $args),
+            'categorias' => $this->handleListCategories($telegram, $chatId, $args),
             default => $this->sendUnknownCommand($telegram, $chatId),
         };
     }
@@ -239,6 +241,35 @@ class TelegramCommandService
     /**
      * Handles credit card balance inquiries.
      */
+    private function handleListCategories(Api $telegram, string $chatId, string $args): void
+    {
+        $query = Category::active()->orderBy('sort_order')->orderBy('name');
+
+        $typeFilter = trim($args);
+        if ($typeFilter === 'gasto') {
+            $query->forType('outgo');
+        } elseif ($typeFilter === 'ingreso') {
+            $query->forType('income');
+        }
+
+        $categories = $query->get(['name', 'type']);
+
+        $lines = ['Categorías disponibles:'];
+        foreach ($categories as $cat) {
+            $label = $cat->type === 'both' ? ($typeFilter ? $cat->name : "{$cat->name} (ambos)") : $cat->name;
+            $lines[] = "• {$label}";
+        }
+
+        if ($categories->isEmpty()) {
+            $lines[] = '(sin categorías configuradas)';
+        }
+
+        $telegram->sendMessage([
+            'chat_id' => $chatId,
+            'text' => implode("\n", $lines),
+        ]);
+    }
+
     private function handleCreditCardBalance(Api $telegram, string $chatId, string $args): void
     {
         $monthMap = config('month_map');
@@ -280,9 +311,11 @@ class TelegramCommandService
                          "• balance\n".
                          "• filtro_balance [<mes> [<anio>]]\n".
                          "• filtro_tx [tipo] [categoria] [mes] [anio]\n".
+                         "• resumen [<mes> [<anio> [<categoría> [<rubro>]]]]\n".
                          "• cierre [<mes>]\n".
                          "• tarjeta <monto> <vendor> [<card_name>] [<n_cuotas>]\n".
-                         '• tarjeta_balance [<mes>]',
+                         "• tarjeta_balance [<mes>]\n".
+                         '• categorias [gasto|ingreso]',
         ]);
     }
 

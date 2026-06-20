@@ -76,35 +76,38 @@ class TelegramCommandServiceTest extends TestCase
     {
         Carbon::setTestNow(Carbon::create(2024, 6, 15, 12, 0, 0));
 
-        Transaction::create([
+        $tx1 = Transaction::create([
             'type' => 'income',
             'amount' => 1000,
             'category' => 'sueldo',
             'owner_id' => 1,
-            'created_at' => Carbon::create(2023, 3, 10, 10),
         ]);
+        $tx1->created_at = Carbon::create(2023, 3, 10, 10);
+        $tx1->save();
 
-        Transaction::create([
+        $tx2 = Transaction::create([
             'type' => 'outgo',
             'amount' => -200,
             'category' => 'supermercado',
             'owner_id' => 1,
-            'created_at' => Carbon::create(2023, 3, 12, 12),
         ]);
+        $tx2->created_at = Carbon::create(2023, 3, 12, 12);
+        $tx2->save();
 
         // Extra data from another year that should not be included
-        Transaction::create([
+        $tx3 = Transaction::create([
             'type' => 'income',
             'amount' => 999,
             'category' => 'extra',
             'owner_id' => 1,
-            'created_at' => Carbon::create(2024, 3, 1, 9),
         ]);
+        $tx3->created_at = Carbon::create(2024, 3, 1, 9);
+        $tx3->save();
 
         $api = \Mockery::mock(Api::class);
         $api->shouldReceive('sendMessage')
-            ->once()
-            ->withArgs(function ($payload) {
+        ->once()
+        ->withArgs(function ($payload) {
                 $this->assertSame('123', (string) $payload['chat_id']);
                 $this->assertStringContainsString('Balance:', $payload['text']);
                 $this->assertStringContainsString('Resumen de marzo 2023', $payload['text']);
@@ -123,21 +126,23 @@ class TelegramCommandServiceTest extends TestCase
     {
         Carbon::setTestNow(Carbon::create(2024, 5, 10, 9, 0, 0));
 
-        Transaction::create([
+        $tx1 = Transaction::create([
             'type' => 'income',
             'amount' => 500,
             'category' => 'sueldo',
             'owner_id' => 1,
-            'created_at' => Carbon::create(2024, 3, 5, 8),
         ]);
+        $tx1->created_at = Carbon::create(2024, 3, 5, 8);
+        $tx1->save();
 
-        Transaction::create([
+        $tx2 = Transaction::create([
             'type' => 'income',
             'amount' => 777,
             'category' => 'otro',
             'owner_id' => 1,
-            'created_at' => Carbon::create(2023, 3, 5, 8),
         ]);
+        $tx2->created_at = Carbon::create(2023, 3, 5, 8);
+        $tx2->save();
 
         $api = \Mockery::mock(Api::class);
         $api->shouldReceive('sendMessage')
