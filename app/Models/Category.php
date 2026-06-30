@@ -24,10 +24,12 @@ class Category extends Model
 {
     use HasFactory;
 
+    public const TYPE_BOTH = 'both';
+
     protected $fillable = ['name', 'type', 'is_active', 'sort_order', 'parent_id', 'notes'];
 
     protected $attributes = [
-        'type' => 'both',
+        'type' => self::TYPE_BOTH,
         'is_active' => true,
         'sort_order' => 0,
     ];
@@ -47,7 +49,7 @@ class Category extends Model
 
     public function scopeForType($query, string $type)
     {
-        return $query->whereIn('type', [$type, 'both']);
+        return $query->whereIn('type', [$type, self::TYPE_BOTH]);
     }
 
     public function isMainCategory(): bool

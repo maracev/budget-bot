@@ -4,6 +4,8 @@ namespace App\Helpers;
 
 class CategoryEmoji
 {
+    private const FALLBACK_EMOJI = '📁';
+
     private static array $emojiMap = [
         'supermercado' => '🛒',
         'sueldo' => '💰',
@@ -35,6 +37,6 @@ class CategoryEmoji
 
     public static function forCategory(string $categoryName): string
     {
-        return self::$emojiMap[strtolower($categoryName)] ?? '📁';
+        return self::$emojiMap[strtolower($categoryName)] ?? self::FALLBACK_EMOJI;
     }
 }

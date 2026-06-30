@@ -9,6 +9,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Telegram\Bot\Api;
 use Telegram\Bot\Keyboard\Keyboard;
+use App\Contants\TransactionConstants;
 
 class TelegramCommandService
 {
@@ -20,8 +21,7 @@ class TelegramCommandService
 
     private FiltroTxValidator $filtroTxValidator;
 
-    private const OUTGO = 'gasto';
-
+   
     public function __construct(
         TransactionService $transactionService,
         MonthlyClosureService $closureService,
@@ -34,12 +34,9 @@ class TelegramCommandService
         $this->filtroTxValidator = $filtroTxValidator;
     }
 
-    /**
-     * Process the command received from Telegram.
-     */
     public function execute(Api $telegram, string $chatId, ?string $username, string $text): void
     {
-        $conversation = Cache::get("telegram_conversation_{$chatId}");
+        $conversation = Cache::get(TransactionConstants::CACHE_KEY_PREFIX . $chatId);
 
         if ($conversation) {
             $this->handleConversation($telegram, $chatId, $username, $text, $conversation);
@@ -49,22 +46,22 @@ class TelegramCommandService
 
         [$command, $args] = $this->parseCommand($text);
 
-        if (in_array($command, ['gasto', 'ingreso']) && $args === '') {
+        if (in_array($command, [TransactionConstants::CMD_GASTO, TransactionConstants::CMD_INGRESO]) && $args === '') {
             $this->startConversation($telegram, $chatId, $command);
 
             return;
         }
 
         match ($command) {
-            'ingreso', 'gasto' => $this->handleTransaction($telegram, $chatId, $username, $command, $args),
-            'balance' => $this->handleBalance($telegram, $chatId),
-            'filtro_balance' => $this->handleFilteredBalance($telegram, $chatId, $args),
-            'filtro_tx' => $this->handleFilteredTransactions($telegram, $chatId, $args),
-            'cierre' => $this->handleClosure($telegram, $chatId, $args),
-            'resumen' => $this->handleCategorySummary($telegram, $chatId, $args),
-            'tarjeta' => $this->handleCreditCard($telegram, $chatId, $username, $args),
-            'tarjeta_balance' => $this->handleCreditCardBalance($telegram, $chatId, $args),
-            'categorias' => $this->handleListCategories($telegram, $chatId, $args),
+            TransactionConstants::CMD_INGRESO, TransactionConstants::CMD_GASTO => $this->handleTransaction($telegram, $chatId, $username, $command, $args),
+            TransactionConstants::CMD_BALANCE => $this->handleBalance($telegram, $chatId),
+            TransactionConstants::CMD_FILTRO_BALANCE => $this->handleFilteredBalance($telegram, $chatId, $args),
+            TransactionConstants::CMD_FILTRO_TX => $this->handleFilteredTransactions($telegram, $chatId, $args),
+            TransactionConstants::CMD_CIERRE => $this->handleClosure($telegram, $chatId, $args),
+            TransactionConstants::CMD_RESUMEN => $this->handleCategorySummary($telegram, $chatId, $args),
+            TransactionConstants::CMD_TARJETA => $this->handleCreditCard($telegram, $chatId, $username, $args),
+            TransactionConstants::CMD_TARJETA_BALANCE => $this->handleCreditCardBalance($telegram, $chatId, $args),
+            TransactionConstants::CMD_CATEGORIAS => $this->handleListCategories($telegram, $chatId, $args),
             default => $this->sendUnknownCommand($telegram, $chatId),
         };
     }
@@ -78,11 +75,6 @@ class TelegramCommandService
         return [$command, $args];
     }
 
-    /**
-     * Handles Income or Expense transactions.
-     *
-     * @param  mixed  $username
-     */
     private function handleTransaction(Api $telegram, string $chatId, ?string $username, string $rawType, string $args): void
     {
         if (! $this->transactionService->register($rawType, $args, $chatId, $username, $errorMessage)) {
@@ -99,7 +91,7 @@ class TelegramCommandService
         $subcategory = $this->transactionService->getLastSubcategory();
 
         $where = $subcategory ? "{$category} / {$subcategory}" : $category;
-        $displayAmount = $rawType === self::OUTGO ? abs($amount) : $amount;
+        $displayAmount = $rawType === TransactionConstants::OUTGO ? abs($amount) : $amount;
 
         $telegram->sendMessage([
             'chat_id' => $chatId,
@@ -107,9 +99,6 @@ class TelegramCommandService
         ]);
     }
 
-    /**
-     * Shows the general transaction balance.
-     */
     private function handleBalance(Api $telegram, string $chatId): void
     {
         $balance = $this->transactionService->getBalance();
@@ -149,7 +138,7 @@ class TelegramCommandService
                 } else {
                     $telegram->sendMessage([
                         'chat_id' => $chatId,
-                        'text' => 'Mes inválido. Usar “filtro_balance mayo” o “filtro_balance mayo 2024”.',
+                        'text' => 'Mes inválido. Usar "filtro_balance mayo" o "filtro_balance mayo 2024".',
                     ]);
 
                     return;
@@ -162,7 +151,7 @@ class TelegramCommandService
                 } else {
                     $telegram->sendMessage([
                         'chat_id' => $chatId,
-                        'text' => 'Año inválido. Usar un año con 4 dígitos. Ej: “filtro_balance mayo 2024”.',
+                        'text' => 'Año inválido. Usar un año con 4 dígitos. Ej: "filtro_balance mayo 2024".',
                     ]);
 
                     return;
@@ -179,9 +168,6 @@ class TelegramCommandService
         ]);
     }
 
-    /**
-     * Handles monthly closure commands.
-     */
     private function handleClosure(Api $telegram, string $chatId, string $args): void
     {
         $monthMap = config('month_map');
@@ -193,9 +179,8 @@ class TelegramCommandService
         $args = trim($args);
 
         if ($args === '') {
-            // Cierra mes actual por defecto
             $month = $currentDate['month'];
-            $monthName = Carbon::createFromDate($year, $month, 1)->locale('es')->monthName;
+            $monthName = Carbon::createFromDate($year, $month, 1)->locale(TransactionConstants::LOCALE)->monthName;
         } else {
             $parts = preg_split('/\s+/', $args, -1, PREG_SPLIT_NO_EMPTY);
             $monthKey = $parts[0] ?? null;
@@ -211,7 +196,7 @@ class TelegramCommandService
         if (! $month) {
             $telegram->sendMessage([
                 'chat_id' => $chatId,
-                'text' => 'Mes inválido. Usar: “cierre mayo”, “cierre diciembre 2025” o simplemente “cierre” para el mes actual.',
+                'text' => 'Mes inválido. Usar: "cierre mayo", "cierre diciembre 2025" o simplemente "cierre" para el mes actual.',
             ]);
 
             return;
@@ -228,11 +213,6 @@ class TelegramCommandService
         ]);
     }
 
-    /**
-     * Handles credit card purchases.
-     *
-     * @param  mixed  $username
-     */
     private function handleCreditCard(Api $telegram, string $chatId, ?string $username, string $args): void
     {
         if (! $this->creditCardService->registerPurchase($args, $chatId, $username, $errorMessage)) {
@@ -244,7 +224,6 @@ class TelegramCommandService
             return;
         }
 
-        // Volver a extraer monto y vendor para mensaje
         preg_match('/^(\d+(\.\d{1,2})?)\s+([\pL\pN\s]+?)(?:\s+(\S+))?(?:\s+(\d+))?$/u', $args, $m);
         $monto = $m[1];
         $vendor = trim($m[3]);
@@ -255,25 +234,22 @@ class TelegramCommandService
         ]);
     }
 
-    /**
-     * Handles credit card balance inquiries.
-     */
     private function handleListCategories(Api $telegram, string $chatId, string $args): void
     {
         $query = Category::active()->orderBy('sort_order')->orderBy('name');
 
         $typeFilter = trim($args);
-        if ($typeFilter === 'gasto') {
-            $query->forType('outgo');
-        } elseif ($typeFilter === 'ingreso') {
-            $query->forType('income');
+        if ($typeFilter === TransactionConstants::CMD_GASTO) {
+            $query->forType(TransactionConstants::TYPE_OUTGO);
+        } elseif ($typeFilter === TransactionConstants::CMD_INGRESO) {
+            $query->forType(TransactionConstants::TYPE_INCOME);
         }
 
         $categories = $query->get(['name', 'type']);
 
         $lines = ['Categorías disponibles:'];
         foreach ($categories as $cat) {
-            $label = $cat->type === 'both' ? ($typeFilter ? $cat->name : "{$cat->name} (ambos)") : $cat->name;
+            $label = $cat->type === Category::TYPE_BOTH ? ($typeFilter ? $cat->name : "{$cat->name} (ambos)") : $cat->name;
             $lines[] = "• {$label}";
         }
 
@@ -294,7 +270,7 @@ class TelegramCommandService
 
         if (empty($args)) {
             $month = Carbon::now()->month;
-            $monthName = Carbon::createFromDate($year, $month, 1)->locale('es')->monthName;
+            $monthName = Carbon::createFromDate($year, $month, 1)->locale(TransactionConstants::LOCALE)->monthName;
         } else {
             $key = trim($args);
             $month = $monthMap[$key] ?? null;
@@ -304,7 +280,7 @@ class TelegramCommandService
         if (! $month) {
             $telegram->sendMessage([
                 'chat_id' => $chatId,
-                'text' => 'Mes inválido. Usar “tarjeta_balance mayo” o “tarjeta_balance” para mes actual.',
+                'text' => 'Mes inválido. Usar "tarjeta_balance mayo" o "tarjeta_balance" para mes actual.',
             ]);
 
             return;
@@ -320,54 +296,53 @@ class TelegramCommandService
 
     private function startConversation(Api $telegram, string $chatId, string $type): void
     {
-        Cache::put("telegram_conversation_{$chatId}", [
-            'step' => 'amount',
-            'type' => $type,
+        Cache::put(TransactionConstants::CACHE_KEY_PREFIX . $chatId, [
+            TransactionConstants::KEY_STEP => TransactionConstants::STEP_AMOUNT,
+            TransactionConstants::KEY_TYPE => $type,
         ], now()->addHour());
 
         $telegram->sendMessage([
             'chat_id' => $chatId,
-            'text' => '¿Cuál es el monto?',
+            'text' => TransactionConstants::PROMPT_AMOUNT,
         ]);
     }
 
     private function handleConversation(Api $telegram, string $chatId, ?string $username, string $text, array $conversation): void
     {
         if (strtolower(trim($text)) === 'cancelar') {
-            Cache::forget("telegram_conversation_{$chatId}");
+            Cache::forget(TransactionConstants::CACHE_KEY_PREFIX . $chatId);
 
             $telegram->sendMessage([
                 'chat_id' => $chatId,
-                'text' => 'Operación cancelada.',
+                'text' => TransactionConstants::MSG_CANCELLED,
             ]);
 
             return;
         }
 
-        $step = $conversation['step'];
+        $step = $conversation[TransactionConstants::KEY_STEP];
 
-        if ($step === 'amount') {
-            $this->handleAmountStep($telegram, $chatId, $username, $text, $conversation['type']);
+        if ($step === TransactionConstants::STEP_AMOUNT) {
+            $this->handleAmountStep($telegram, $chatId, $username, $text, $conversation[TransactionConstants::KEY_TYPE]);
 
             return;
         }
 
-        if ($step === 'category_selection') {
+        if ($step === TransactionConstants::STEP_CATEGORY_SELECTION) {
             $this->handleCategorySelectionStep($telegram, $chatId, $username, $text, $conversation);
 
             return;
         }
 
-        if ($step === 'subcategory_selection') {
+        if ($step === TransactionConstants::STEP_SUBCATEGORY_SELECTION) {
             $this->handleSubcategorySelectionStep($telegram, $chatId, $username, $text, $conversation);
 
             return;
         }
 
-        if ($step === 'note') {
+        if ($step === TransactionConstants::STEP_NOTE) {
             $this->handleNoteStep($telegram, $chatId, $username, $text, $conversation);
         }
-
     }
 
     private function handleAmountStep(Api $telegram, string $chatId, ?string $username, string $text, string $type): void
@@ -375,7 +350,7 @@ class TelegramCommandService
         if (! ctype_digit($text) || (int) $text <= 0) {
             $telegram->sendMessage([
                 'chat_id' => $chatId,
-                'text' => 'Monto inválido. Ingresá un número positivo.',
+                'text' => TransactionConstants::MSG_INVALID_AMOUNT,
             ]);
 
             return;
@@ -383,10 +358,10 @@ class TelegramCommandService
 
         $amount = (int) $text;
 
-        Cache::put("telegram_conversation_{$chatId}", [
-            'step' => 'category_selection',
-            'type' => $type,
-            'amount' => $amount,
+        Cache::put(TransactionConstants::CACHE_KEY_PREFIX . $chatId, [
+            TransactionConstants::KEY_STEP => TransactionConstants::STEP_CATEGORY_SELECTION,
+            TransactionConstants::KEY_TYPE => $type,
+            TransactionConstants::KEY_AMOUNT => $amount,
         ], now()->addHour());
 
         $this->sendCategoryKeyboard($telegram, $chatId, $type);
@@ -394,22 +369,22 @@ class TelegramCommandService
 
     private function handleCategorySelectionStep(Api $telegram, string $chatId, ?string $username, string $text, array $conversation): void
     {
-        $type = $conversation['type'];
-        $amount = $conversation['amount'];
+        $type = $conversation[TransactionConstants::KEY_TYPE];
+        $amount = $conversation[TransactionConstants::KEY_AMOUNT];
         $categoryName = $this->extractCategoryName($text);
 
         if ($categoryName === '') {
-            $this->sendCategoryKeyboard($telegram, $chatId, $type, 'Categoría inválida. Seleccioná una categoría:');
+            $this->sendCategoryKeyboard($telegram, $chatId, $type, TransactionConstants::MSG_INVALID_CATEGORY);
 
             return;
         }
 
-        $category = Category::active()->forType($type === self::OUTGO ? 'outgo' : 'income')
+        $category = Category::active()->forType($type === TransactionConstants::OUTGO ? TransactionConstants::TYPE_OUTGO : TransactionConstants::TYPE_INCOME)
             ->where('name', $categoryName)
             ->first();
 
         if (! $category) {
-            $this->sendCategoryKeyboard($telegram, $chatId, $type, 'Categoría no encontrada. Seleccioná una categoría:');
+            $this->sendCategoryKeyboard($telegram, $chatId, $type, TransactionConstants::MSG_CATEGORY_NOT_FOUND);
 
             return;
         }
@@ -421,12 +396,12 @@ class TelegramCommandService
             ->get();
 
         if ($subcategories->isNotEmpty()) {
-            Cache::put("telegram_conversation_{$chatId}", [
-                'step' => 'subcategory_selection',
-                'type' => $type,
-                'amount' => $amount,
-                'category' => $category->name,
-                'category_id' => $category->id,
+            Cache::put(TransactionConstants::CACHE_KEY_PREFIX . $chatId, [
+                TransactionConstants::KEY_STEP => TransactionConstants::STEP_SUBCATEGORY_SELECTION,
+                TransactionConstants::KEY_TYPE => $type,
+                TransactionConstants::KEY_AMOUNT => $amount,
+                TransactionConstants::KEY_CATEGORY => $category->name,
+                TransactionConstants::KEY_CATEGORY_ID => $category->id,
             ], now()->addHour());
 
             $this->sendSubcategoryKeyboard($telegram, $chatId, $category, $subcategories);
@@ -435,17 +410,15 @@ class TelegramCommandService
         }
 
         $this->proceedToNoteStep($telegram, $chatId, $username, $type, $amount, $category->name, null);
-
-        return;
     }
 
     private function handleSubcategorySelectionStep(Api $telegram, string $chatId, ?string $username, string $text, array $conversation): void
     {
-        $type = $conversation['type'];
-        $amount = $conversation['amount'];
-        $mainCategoryName = $conversation['category'];
+        $type = $conversation[TransactionConstants::KEY_TYPE];
+        $amount = $conversation[TransactionConstants::KEY_AMOUNT];
+        $mainCategoryName = $conversation[TransactionConstants::KEY_CATEGORY];
 
-        if (str_contains($text, '✅') || str_starts_with($text, '✓') || trim(strtolower($text)) === $mainCategoryName) {
+        if (str_contains($text, TransactionConstants::CHECK_PREFIX) || str_starts_with($text, TransactionConstants::CHECK_ALT) || trim(strtolower($text)) === $mainCategoryName) {
             $this->proceedToNoteStep($telegram, $chatId, $username, $type, $amount, $mainCategoryName, null);
 
             return;
@@ -454,74 +427,72 @@ class TelegramCommandService
         $subcategoryName = $this->extractCategoryName($text);
 
         if ($subcategoryName === '') {
-            $category = Category::find($conversation['category_id']);
+            $category = Category::find($conversation[TransactionConstants::KEY_CATEGORY_ID]);
             $subcategories = Category::active()->where('parent_id', $category->id)
                 ->orderBy('sort_order')->orderBy('name')->get();
-            $this->sendSubcategoryKeyboard($telegram, $chatId, $category, $subcategories, 'Subcategoría inválida. Seleccioná una subcategoría:');
+            $this->sendSubcategoryKeyboard($telegram, $chatId, $category, $subcategories, TransactionConstants::MSG_INVALID_SUBCATEGORY);
 
             return;
         }
 
         $subcategory = Category::active()
-            ->where('parent_id', $conversation['category_id'])
+            ->where('parent_id', $conversation[TransactionConstants::KEY_CATEGORY_ID])
             ->where('name', $subcategoryName)
             ->first();
 
         if (! $subcategory) {
-            $category = Category::find($conversation['category_id']);
+            $category = Category::find($conversation[TransactionConstants::KEY_CATEGORY_ID]);
             $subcategories = Category::active()->where('parent_id', $category->id)
                 ->orderBy('sort_order')->orderBy('name')->get();
-            $this->sendSubcategoryKeyboard($telegram, $chatId, $category, $subcategories, 'Subcategoría no encontrada. Seleccioná una subcategoría:');
+            $this->sendSubcategoryKeyboard($telegram, $chatId, $category, $subcategories, TransactionConstants::MSG_SUBCATEGORY_NOT_FOUND);
 
             return;
         }
 
         $this->proceedToNoteStep($telegram, $chatId, $username, $type, $amount, $mainCategoryName, $subcategory->name);
-
-        return;
     }
 
     private function proceedToNoteStep(Api $telegram, string $chatId, ?string $username, string $type, int $amount, string $category, ?string $subcategory): void
     {
-        Cache::put("telegram_conversation_{$chatId}", [
-            'step' => 'note',
-            'type' => $type,
-            'amount' => $amount,
-            'category' => $category,
-            'subcategory' => $subcategory,
+        Cache::put(TransactionConstants::CACHE_KEY_PREFIX . $chatId, [
+            TransactionConstants::KEY_STEP => TransactionConstants::STEP_NOTE,
+            TransactionConstants::KEY_TYPE => $type,
+            TransactionConstants::KEY_AMOUNT => $amount,
+            TransactionConstants::KEY_CATEGORY => $category,
+            TransactionConstants::KEY_SUBCATEGORY => $subcategory,
         ], now()->addHour());
 
         $keyboard = Keyboard::make([
-            'keyboard' => [[Keyboard::button(['text' => '⏭ Saltar'])]],
+            'keyboard' => [[Keyboard::button(['text' => TransactionConstants::SKIP_TEXT])]],
             'resize_keyboard' => true,
             'one_time_keyboard' => true,
         ]);
 
         $telegram->sendMessage([
             'chat_id' => $chatId,
-            'text' => 'Agregá una nota (opcional) o presioná "Saltar":',
+            'text' => TransactionConstants::PROMPT_NOTE,
             'reply_markup' => $keyboard,
         ]);
     }
 
     private function handleNoteStep(Api $telegram, string $chatId, ?string $username, string $text, array $conversation): void
     {
-        $type = $conversation['type'];
-        $amount = $conversation['amount'];
-        $category = $conversation['category'];
-        $subcategory = $conversation['subcategory'] ?? null;
+        $type = $conversation[TransactionConstants::KEY_TYPE];
+        $amount = $conversation[TransactionConstants::KEY_AMOUNT];
+        $category = $conversation[TransactionConstants::KEY_CATEGORY];
+        $subcategory = $conversation[TransactionConstants::KEY_SUBCATEGORY] ?? null;
 
         $trimmed = trim($text);
         $notes = null;
 
-        if (strtolower($trimmed) !== 'saltar' && ! str_contains($trimmed, '⏭')) {
+        if (strtolower($trimmed) !== 'saltar' && ! str_contains($trimmed, TransactionConstants::SKIP_INDICATOR)) {
             $notes = $trimmed;
         }
 
         $args = $subcategory ? "{$amount} {$category} {$subcategory}" : "{$amount} {$category}";
 
         if (! $this->transactionService->register($type, $args, $chatId, $username, $errorMessage, $notes)) {
-            Cache::forget("telegram_conversation_{$chatId}");
+            Cache::forget(TransactionConstants::CACHE_KEY_PREFIX . $chatId);
 
             $telegram->sendMessage([
                 'chat_id' => $chatId,
@@ -531,9 +502,9 @@ class TelegramCommandService
             return;
         }
 
-        Cache::forget("telegram_conversation_{$chatId}");
+        Cache::forget(TransactionConstants::CACHE_KEY_PREFIX . $chatId);
 
-        $displayAmount = $type === self::OUTGO ? $amount : $amount;
+        $displayAmount = $type === TransactionConstants::OUTGO ? $amount : $amount;
         $where = $subcategory ? "{$category} / {$subcategory}" : $category;
         $noteSuffix = $notes ? " — {$notes}" : '';
 
@@ -547,7 +518,7 @@ class TelegramCommandService
     {
         $categories = Category::active()
             ->whereNull('parent_id')
-            ->forType($type === self::OUTGO ? 'outgo' : 'income')
+            ->forType($type === TransactionConstants::OUTGO ? TransactionConstants::TYPE_OUTGO : TransactionConstants::TYPE_INCOME)
             ->orderBy('sort_order')
             ->orderBy('name')
             ->get();
@@ -561,7 +532,7 @@ class TelegramCommandService
 
         $telegram->sendMessage([
             'chat_id' => $chatId,
-            'text' => $message ?? 'Seleccioná una categoría:',
+            'text' => $message ?? TransactionConstants::PROMPT_CATEGORY,
             'reply_markup' => $oneTimeKeyboard,
         ]);
     }
@@ -573,7 +544,7 @@ class TelegramCommandService
         ])->all();
 
         $buttons[] = [
-            Keyboard::button(['text' => '✅ ' . $category->name]),
+            Keyboard::button(['text' => TransactionConstants::CHECK_PREFIX . $category->name]),
         ];
 
         $keyboard = Keyboard::make([
@@ -584,7 +555,7 @@ class TelegramCommandService
 
         $telegram->sendMessage([
             'chat_id' => $chatId,
-            'text' => $message ?? 'Seleccioná una subcategoría:',
+            'text' => $message ?? TransactionConstants::PROMPT_SUBCATEGORY,
             'reply_markup' => $keyboard,
         ]);
     }
@@ -630,11 +601,6 @@ class TelegramCommandService
         ]);
     }
 
-    /**
-     * Summary of getCurrentDate
-     *
-     * @return array{month: int, monthName: string, year: int}
-     */
     protected function getCurrentDate(): array
     {
         $month = Carbon::now()->month;
@@ -643,7 +609,7 @@ class TelegramCommandService
         return [
             'month' => $month,
             'year' => $year,
-            'monthName' => Carbon::createFromDate($year, $month, 1)->locale('es')->monthName,
+            'monthName' => Carbon::createFromDate($year, $month, 1)->locale(TransactionConstants::LOCALE)->monthName,
         ];
     }
 
@@ -699,7 +665,7 @@ class TelegramCommandService
             return;
         }
 
-        $monthName = Carbon::createFromDate($year, $month, 1)->locale('es')->monthName;
+        $monthName = Carbon::createFromDate($year, $month, 1)->locale(TransactionConstants::LOCALE)->monthName;
 
         $titleParts = ["Transacciones {$monthName} {$year}"];
         if ($type) {
@@ -751,9 +717,6 @@ class TelegramCommandService
             $maybeCategory = $parts[2] ?? null;
             $maybeSubcategory = $parts[3] ?? null;
 
-            /**
-             * MES
-             */
             if ($monthKey) {
 
                 $normalized = strtolower($monthKey);
@@ -773,9 +736,6 @@ class TelegramCommandService
                 }
             }
 
-            /**
-             * AÑO
-             */
             if ($maybeYear !== null && ctype_digit($maybeYear) && strlen($maybeYear) === 4) {
 
                 $year = (int)$maybeYear;
@@ -789,16 +749,10 @@ class TelegramCommandService
                 return;
             }
 
-            /**
-             * CATEGORY
-             */
             if ($maybeCategory !== null) {
                 $category = strtolower($maybeCategory);
             }
 
-            /**
-             * SUBCATEGORY
-             */
             if ($maybeSubcategory !== null) {
                 $subcategory = strtolower($maybeSubcategory);
             }
