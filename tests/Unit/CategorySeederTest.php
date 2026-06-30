@@ -15,7 +15,7 @@ class CategorySeederTest extends TestCase
     {
         $this->seed(CategorySeeder::class);
 
-        $this->assertDatabaseCount('categories', 26);
+        $this->assertDatabaseCount('categories', 129);
     }
 
     public function test_seeder_creates_income_categories()
@@ -25,7 +25,9 @@ class CategorySeederTest extends TestCase
         $incomeCategories = Category::forType('income')->get();
 
         $this->assertGreaterThan(0, $incomeCategories->count());
-        $this->assertTrue($incomeCategories->pluck('name')->contains('sueldo'));
+
+        $incomeNames = $incomeCategories->pluck('name')->map(fn ($n) => strtolower($n));
+        $this->assertTrue($incomeNames->contains('sueldo'));
     }
 
     public function test_seeder_creates_outgo_categories()
@@ -35,17 +37,18 @@ class CategorySeederTest extends TestCase
         $outgoCategories = Category::forType('outgo')->get();
 
         $this->assertGreaterThan(0, $outgoCategories->count());
-        $this->assertTrue($outgoCategories->pluck('name')->contains('supermercado'));
+
+        $outgoNames = $outgoCategories->pluck('name')->map(fn ($n) => strtolower($n));
+        $this->assertTrue($outgoNames->contains('supermercado'));
     }
 
-    public function test_seeder_creates_both_type_categories()
+    public function test_seeder_creates_no_both_type_categories()
     {
         $this->seed(CategorySeeder::class);
 
         $both = Category::where('type', 'both')->get();
 
-        $this->assertGreaterThan(0, $both->count());
-        $this->assertSame('transferencias', $both->first()->name);
+        $this->assertCount(0, $both);
     }
 
     public function test_seeder_sets_sort_order()

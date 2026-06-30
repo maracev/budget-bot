@@ -2,12 +2,15 @@
 
 namespace Tests\Unit;
 
+use App\Helpers\CategoryEmoji;
+use App\Models\Category;
 use App\Models\Transaction;
 use App\Services\TelegramCommandService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Telegram\Bot\Api;
+use Telegram\Bot\Keyboard\Keyboard;
 use Tests\TestCase;
 
 class TelegramCommandServiceTest extends TestCase
@@ -25,7 +28,6 @@ class TelegramCommandServiceTest extends TestCase
     {
         $service = app(TelegramCommandService::class);
 
-        // Mock Telegram API to assert reply message
         $api = \Mockery::mock(Api::class);
         $api->shouldReceive('sendMessage')
             ->once()
@@ -95,7 +97,6 @@ class TelegramCommandServiceTest extends TestCase
         $tx2->created_at = Carbon::create(2023, 3, 12, 12);
         $tx2->save();
 
-        // Extra data from another year that should not be included
         $tx3 = Transaction::create([
             'type' => 'income',
             'amount' => 999,
@@ -210,8 +211,10 @@ class TelegramCommandServiceTest extends TestCase
         $this->assertSame('gasto', $state['type']);
     }
 
-    public function test_valid_amount_advances_to_category_step()
+    public function test_valid_amount_advances_to_category_selection()
     {
+        Category::create(['name' => 'supermercado', 'type' => 'outgo', 'sort_order' => 1]);
+
         $service = app(TelegramCommandService::class);
 
         $api = \Mockery::mock(Api::class);
@@ -222,13 +225,18 @@ class TelegramCommandServiceTest extends TestCase
         $api->shouldReceive('sendMessage')
             ->once()
             ->ordered()
-            ->withArgs(fn ($p) => $p['text'] === '¿En qué categoría?');
+            ->withArgs(function ($payload) {
+                $this->assertSame('Seleccioná una categoría:', $payload['text']);
+                $this->assertArrayHasKey('reply_markup', $payload);
+
+                return true;
+            });
 
         $service->execute($api, '123', 'maria', 'gasto');
         $service->execute($api, '123', 'maria', '500');
 
         $state = Cache::get('telegram_conversation_123');
-        $this->assertSame('category', $state['step']);
+        $this->assertSame('category_selection', $state['step']);
         $this->assertSame(500, $state['amount']);
     }
 
@@ -259,17 +267,36 @@ class TelegramCommandServiceTest extends TestCase
 
     public function test_expense_is_registered_when_category_is_chosen()
     {
+        Category::create(['name' => 'supermercado', 'type' => 'outgo', 'sort_order' => 1]);
+
         $service = app(TelegramCommandService::class);
 
         $api = \Mockery::mock(Api::class);
         $api->shouldReceive('sendMessage')
             ->once()
+            ->ordered()
             ->withArgs(fn ($p) => $p['text'] === '¿Cuál es el monto?');
         $api->shouldReceive('sendMessage')
             ->once()
-            ->withArgs(fn ($p) => $p['text'] === '¿En qué categoría?');
+            ->ordered()
+            ->withArgs(function ($payload) {
+                $this->assertSame('Seleccioná una categoría:', $payload['text']);
+                $this->assertArrayHasKey('reply_markup', $payload);
+
+                return true;
+            });
         $api->shouldReceive('sendMessage')
             ->once()
+            ->ordered()
+            ->withArgs(function ($payload) {
+                $this->assertStringContainsString('Agregá una nota', $payload['text']);
+                $this->assertArrayHasKey('reply_markup', $payload);
+
+                return true;
+            });
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->ordered()
             ->withArgs(function ($payload) {
                 $this->assertStringContainsString('Registrado: gasto de $500 en supermercado', $payload['text']);
 
@@ -279,6 +306,7 @@ class TelegramCommandServiceTest extends TestCase
         $service->execute($api, '123', 'maria', 'gasto');
         $service->execute($api, '123', 'maria', '500');
         $service->execute($api, '123', 'maria', 'supermercado');
+        $service->execute($api, '123', 'maria', 'Saltar');
 
         $this->assertDatabaseHas('transactions', [
             'owner_id' => 123,
@@ -286,6 +314,7 @@ class TelegramCommandServiceTest extends TestCase
             'amount' => -500,
             'category' => 'supermercado',
             'owner_name' => 'maria',
+            'notes' => null,
         ]);
 
         $this->assertNull(Cache::get('telegram_conversation_123'));
@@ -336,5 +365,392 @@ class TelegramCommandServiceTest extends TestCase
         $service->execute($api, '123', 'maria', 'cancelar');
 
         $this->assertNull(Cache::get('telegram_conversation_123'));
+    }
+
+    public function test_category_keyboard_shows_only_main_categories()
+    {
+        $main = Category::create(['name' => 'supermercado', 'type' => 'outgo', 'sort_order' => 1]);
+        Category::insert(['name' => 'alimentos', 'type' => 'outgo', 'sort_order' => 2, 'parent_id' => $main->id]);
+
+        $service = app(TelegramCommandService::class);
+
+        $api = \Mockery::mock(Api::class);
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->ordered()
+            ->withArgs(fn ($p) => $p['text'] === '¿Cuál es el monto?');
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->ordered()
+            ->withArgs(function ($payload) {
+                $this->assertSame('Seleccioná una categoría:', $payload['text']);
+                $keyboard = $payload['reply_markup'];
+                $this->assertInstanceOf(Keyboard::class, $keyboard);
+                $buttons = array_merge(...$keyboard['keyboard']);
+                $buttonTexts = array_map(fn ($b) => $b['text'], $buttons);
+                $this->assertContains('🛒 supermercado', $buttonTexts);
+                $this->assertNotContains('🥩 alimentos', $buttonTexts);
+
+                return true;
+            });
+
+        $service->execute($api, '123', 'maria', 'gasto');
+        $service->execute($api, '123', 'maria', '500');
+    }
+
+    public function test_category_keyboard_filters_by_transaction_type()
+    {
+        Category::create(['name' => 'sueldo', 'type' => 'income', 'sort_order' => 1]);
+        Category::create(['name' => 'supermercado', 'type' => 'outgo', 'sort_order' => 2]);
+
+        $service = app(TelegramCommandService::class);
+
+        $api = \Mockery::mock(Api::class);
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->ordered()
+            ->withArgs(fn ($p) => $p['text'] === '¿Cuál es el monto?');
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->ordered()
+            ->withArgs(function ($payload) {
+                $keyboard = $payload['reply_markup'];
+                $buttons = array_merge(...$keyboard['keyboard']);
+                $buttonTexts = array_map(fn ($b) => $b['text'], $buttons);
+                $this->assertContains('💰 sueldo', $buttonTexts);
+                $this->assertNotContains('🛒 supermercado', $buttonTexts);
+
+                return true;
+            });
+
+        $service->execute($api, '123', 'maria', 'ingreso');
+        $service->execute($api, '123', 'maria', '1000');
+    }
+
+    public function test_category_keyboard_is_ordered_by_sort_order()
+    {
+        Category::create(['name' => 'b', 'type' => 'outgo', 'sort_order' => 2]);
+        Category::create(['name' => 'a', 'type' => 'outgo', 'sort_order' => 1]);
+
+        $service = app(TelegramCommandService::class);
+
+        $api = \Mockery::mock(Api::class);
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->ordered()
+            ->withArgs(fn ($p) => $p['text'] === '¿Cuál es el monto?');
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->ordered()
+            ->withArgs(function ($payload) {
+                $keyboard = $payload['reply_markup'];
+                $buttons = array_merge(...$keyboard['keyboard']);
+                $buttonTexts = array_map(fn ($b) => $b['text'], $buttons);
+                $emojiA = CategoryEmoji::forCategory('a') . ' a';
+                $emojiB = CategoryEmoji::forCategory('b') . ' b';
+                $this->assertSame($emojiA, $buttonTexts[0]);
+                $this->assertSame($emojiB, $buttonTexts[1]);
+
+                return true;
+            });
+
+        $service->execute($api, '123', 'maria', 'gasto');
+        $service->execute($api, '123', 'maria', '500');
+    }
+
+    public function test_guided_flow_continues_to_subcategory_selection()
+    {
+        $supermercado = Category::create(['name' => 'supermercado', 'type' => 'outgo', 'sort_order' => 1]);
+        Category::insert([
+            ['name' => 'alimentos', 'type' => 'outgo', 'sort_order' => 2, 'parent_id' => $supermercado->id],
+            ['name' => 'limpieza', 'type' => 'outgo', 'sort_order' => 3, 'parent_id' => $supermercado->id],
+        ]);
+
+        $service = app(TelegramCommandService::class);
+
+        $api = \Mockery::mock(Api::class);
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->ordered()
+            ->withArgs(fn ($p) => $p['text'] === '¿Cuál es el monto?');
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->ordered()
+            ->withArgs(function ($payload) {
+                $this->assertSame('Seleccioná una categoría:', $payload['text']);
+
+                return true;
+            });
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->ordered()
+            ->withArgs(function ($payload) {
+                $this->assertSame('Seleccioná una subcategoría:', $payload['text']);
+                $keyboard = $payload['reply_markup'];
+                $this->assertInstanceOf(Keyboard::class, $keyboard);
+                $buttons = array_merge(...$keyboard['keyboard']);
+                $buttonTexts = array_map(fn ($b) => $b['text'], $buttons);
+                $this->assertContains('🥩 alimentos', $buttonTexts);
+                $this->assertContains('🧹 limpieza', $buttonTexts);
+                $this->assertContains('✅ supermercado', $buttonTexts);
+
+                return true;
+            });
+
+        $service->execute($api, '123', 'maria', 'gasto');
+        $service->execute($api, '123', 'maria', '500');
+        $service->execute($api, '123', 'maria', 'supermercado');
+
+        $state = Cache::get('telegram_conversation_123');
+        $this->assertSame('subcategory_selection', $state['step']);
+        $this->assertSame('supermercado', $state['category']);
+    }
+
+    public function test_guided_flow_registers_with_subcategory()
+    {
+        $supermercado = Category::create(['name' => 'supermercado', 'type' => 'outgo', 'sort_order' => 1]);
+        Category::insert(['name' => 'alimentos', 'type' => 'outgo', 'sort_order' => 2, 'parent_id' => $supermercado->id]);
+
+        $service = app(TelegramCommandService::class);
+
+        $api = \Mockery::mock(Api::class);
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->ordered()
+            ->withArgs(fn ($p) => $p['text'] === '¿Cuál es el monto?');
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->ordered()
+            ->withArgs(function ($payload) {
+                $this->assertSame('Seleccioná una categoría:', $payload['text']);
+
+                return true;
+            });
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->ordered()
+            ->withArgs(function ($payload) {
+                $this->assertSame('Seleccioná una subcategoría:', $payload['text']);
+
+                return true;
+            });
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->ordered()
+            ->withArgs(function ($payload) {
+                $this->assertStringContainsString('Agregá una nota', $payload['text']);
+
+                return true;
+            });
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->ordered()
+            ->withArgs(function ($payload) {
+                $this->assertStringContainsString('Registrado: gasto de $500 en supermercado / alimentos', $payload['text']);
+
+                return true;
+            });
+
+        $service->execute($api, '123', 'maria', 'gasto');
+        $service->execute($api, '123', 'maria', '500');
+        $service->execute($api, '123', 'maria', 'supermercado');
+        $service->execute($api, '123', 'maria', 'alimentos');
+        $service->execute($api, '123', 'maria', '⏭ Saltar');
+
+        $this->assertDatabaseHas('transactions', [
+            'owner_id' => 123,
+            'type' => 'outgo',
+            'amount' => -500,
+            'category' => 'supermercado',
+            'subcategory' => 'alimentos',
+        ]);
+    }
+
+    public function test_guided_flow_registers_directly_under_main_category()
+    {
+        $supermercado = Category::create(['name' => 'supermercado', 'type' => 'outgo', 'sort_order' => 1]);
+        Category::insert(['name' => 'alimentos', 'type' => 'outgo', 'sort_order' => 2, 'parent_id' => $supermercado->id]);
+
+        $service = app(TelegramCommandService::class);
+
+        $api = \Mockery::mock(Api::class);
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->ordered()
+            ->withArgs(fn ($p) => $p['text'] === '¿Cuál es el monto?');
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->ordered()
+            ->withArgs(function ($payload) {
+                $this->assertSame('Seleccioná una categoría:', $payload['text']);
+
+                return true;
+            });
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->ordered()
+            ->withArgs(function ($payload) {
+                $this->assertSame('Seleccioná una subcategoría:', $payload['text']);
+
+                return true;
+            });
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->ordered()
+            ->withArgs(function ($payload) {
+                $this->assertStringContainsString('Agregá una nota', $payload['text']);
+
+                return true;
+            });
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->ordered()
+            ->withArgs(function ($payload) {
+                $this->assertStringContainsString('Registrado: gasto de $500 en supermercado', $payload['text']);
+                $this->assertStringNotContainsString('/', $payload['text']);
+
+                return true;
+            });
+
+        $service->execute($api, '123', 'maria', 'gasto');
+        $service->execute($api, '123', 'maria', '500');
+        $service->execute($api, '123', 'maria', 'supermercado');
+        $service->execute($api, '123', 'maria', '✅ supermercado');
+        $service->execute($api, '123', 'maria', 'Saltar');
+
+        $this->assertDatabaseHas('transactions', [
+            'owner_id' => 123,
+            'type' => 'outgo',
+            'amount' => -500,
+            'category' => 'supermercado',
+            'subcategory' => null,
+        ]);
+    }
+
+    public function test_invalid_category_shows_error_and_redisplays_keyboard()
+    {
+        Category::create(['name' => 'supermercado', 'type' => 'outgo', 'sort_order' => 1]);
+
+        $service = app(TelegramCommandService::class);
+
+        $api = \Mockery::mock(Api::class);
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->ordered()
+            ->withArgs(fn ($p) => $p['text'] === '¿Cuál es el monto?');
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->ordered()
+            ->withArgs(function ($payload) {
+                $this->assertSame('Seleccioná una categoría:', $payload['text']);
+
+                return true;
+            });
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->ordered()
+            ->withArgs(function ($payload) {
+                $this->assertStringContainsString('Categoría no encontrada', $payload['text']);
+                $this->assertArrayHasKey('reply_markup', $payload);
+
+                return true;
+            });
+
+        $service->execute($api, '123', 'maria', 'gasto');
+        $service->execute($api, '123', 'maria', '500');
+        $service->execute($api, '123', 'maria', 'categoria_invalida');
+    }
+
+    public function test_guided_flow_accepts_note_and_shows_it_in_confirmation()
+    {
+        Category::create(['name' => 'supermercado', 'type' => 'outgo', 'sort_order' => 1]);
+
+        $service = app(TelegramCommandService::class);
+
+        $api = \Mockery::mock(Api::class);
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->ordered()
+            ->withArgs(fn ($p) => $p['text'] === '¿Cuál es el monto?');
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->ordered()
+            ->withArgs(fn ($p) => $p['text'] === 'Seleccioná una categoría:');
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->ordered()
+            ->withArgs(fn ($p) => str_contains($p['text'], 'Agregá una nota'));
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->ordered()
+            ->withArgs(function ($payload) {
+                $this->assertStringContainsString('Registrado: gasto de $500 en supermercado — compra semanal', $payload['text']);
+
+                return true;
+            });
+
+        $service->execute($api, '123', 'maria', 'gasto');
+        $service->execute($api, '123', 'maria', '500');
+        $service->execute($api, '123', 'maria', 'supermercado');
+        $service->execute($api, '123', 'maria', 'compra semanal');
+
+        $this->assertDatabaseHas('transactions', [
+            'owner_id' => 123,
+            'type' => 'outgo',
+            'amount' => -500,
+            'category' => 'supermercado',
+            'notes' => 'compra semanal',
+        ]);
+    }
+
+    public function test_cancelar_from_note_step_clears_conversation()
+    {
+        Category::create(['name' => 'supermercado', 'type' => 'outgo', 'sort_order' => 1]);
+
+        $service = app(TelegramCommandService::class);
+
+        $api = \Mockery::mock(Api::class);
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->ordered()
+            ->withArgs(fn ($p) => $p['text'] === '¿Cuál es el monto?');
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->ordered()
+            ->withArgs(fn ($p) => $p['text'] === 'Seleccioná una categoría:');
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->ordered()
+            ->withArgs(fn ($p) => str_contains($p['text'], 'Agregá una nota'));
+        $api->shouldReceive('sendMessage')
+            ->once()
+            ->ordered()
+            ->withArgs(fn ($p) => $p['text'] === 'Operación cancelada.');
+
+        $service->execute($api, '123', 'maria', 'gasto');
+        $service->execute($api, '123', 'maria', '500');
+        $service->execute($api, '123', 'maria', 'supermercado');
+        $service->execute($api, '123', 'maria', 'cancelar');
+
+        $this->assertNull(Cache::get('telegram_conversation_123'));
+        $this->assertDatabaseCount('transactions', 0);
+    }
+
+    public function test_emoji_mapper_returns_emoji_for_known_category()
+    {
+        $this->assertSame('🛒', CategoryEmoji::forCategory('supermercado'));
+        $this->assertSame('💰', CategoryEmoji::forCategory('sueldo'));
+        $this->assertSame('🚗', CategoryEmoji::forCategory('auto'));
+    }
+
+    public function test_emoji_mapper_is_case_insensitive()
+    {
+        $this->assertSame('🛒', CategoryEmoji::forCategory('Supermercado'));
+        $this->assertSame('🛒', CategoryEmoji::forCategory('SUPERMERCADO'));
+    }
+
+    public function test_emoji_mapper_returns_fallback_for_unknown_category()
+    {
+        $this->assertSame('📁', CategoryEmoji::forCategory('categoria_inexistente'));
     }
 }

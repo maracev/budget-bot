@@ -24,7 +24,7 @@ class Category extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['name', 'type', 'is_active', 'sort_order'];
+    protected $fillable = ['name', 'type', 'is_active', 'sort_order', 'parent_id', 'notes'];
 
     protected $attributes = [
         'type' => 'both',

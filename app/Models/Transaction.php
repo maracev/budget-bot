@@ -9,5 +9,5 @@ class Transaction extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['type', 'category', 'subcategory', 'amount', 'owner_id', 'owner_name'];
+    protected $fillable = ['type', 'category', 'subcategory', 'amount', 'owner_id', 'owner_name', 'notes'];
 }

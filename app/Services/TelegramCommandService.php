@@ -2,11 +2,13 @@
 
 namespace App\Services;
 
+use App\Helpers\CategoryEmoji;
 use App\Models\Category;
 use App\Validators\FiltroTxValidator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Telegram\Bot\Api;
+use Telegram\Bot\Keyboard\Keyboard;
 
 class TelegramCommandService
 {
@@ -350,9 +352,22 @@ class TelegramCommandService
             return;
         }
 
-        if ($step === 'category') {
-            $this->handleCategoryStep($telegram, $chatId, $username, $text, $conversation);
+        if ($step === 'category_selection') {
+            $this->handleCategorySelectionStep($telegram, $chatId, $username, $text, $conversation);
+
+            return;
         }
+
+        if ($step === 'subcategory_selection') {
+            $this->handleSubcategorySelectionStep($telegram, $chatId, $username, $text, $conversation);
+
+            return;
+        }
+
+        if ($step === 'note') {
+            $this->handleNoteStep($telegram, $chatId, $username, $text, $conversation);
+        }
+
     }
 
     private function handleAmountStep(Api $telegram, string $chatId, ?string $username, string $text, string $type): void
@@ -369,35 +384,143 @@ class TelegramCommandService
         $amount = (int) $text;
 
         Cache::put("telegram_conversation_{$chatId}", [
-            'step' => 'category',
+            'step' => 'category_selection',
             'type' => $type,
             'amount' => $amount,
         ], now()->addHour());
 
-        $telegram->sendMessage([
-            'chat_id' => $chatId,
-            'text' => '¿En qué categoría?',
-        ]);
+        $this->sendCategoryKeyboard($telegram, $chatId, $type);
     }
 
-    private function handleCategoryStep(Api $telegram, string $chatId, ?string $username, string $text, array $conversation): void
+    private function handleCategorySelectionStep(Api $telegram, string $chatId, ?string $username, string $text, array $conversation): void
     {
         $type = $conversation['type'];
         $amount = $conversation['amount'];
-        $category = trim(strtolower($text));
+        $categoryName = $this->extractCategoryName($text);
 
-        if ($category === '') {
-            $telegram->sendMessage([
-                'chat_id' => $chatId,
-                'text' => 'Categoría inválida. Ingresá una categoría válida.',
-            ]);
+        if ($categoryName === '') {
+            $this->sendCategoryKeyboard($telegram, $chatId, $type, 'Categoría inválida. Seleccioná una categoría:');
 
             return;
         }
 
-        $args = "{$amount} {$category}";
+        $category = Category::active()->forType($type === self::OUTGO ? 'outgo' : 'income')
+            ->where('name', $categoryName)
+            ->first();
 
-        if (! $this->transactionService->register($type, $args, $chatId, $username, $errorMessage)) {
+        if (! $category) {
+            $this->sendCategoryKeyboard($telegram, $chatId, $type, 'Categoría no encontrada. Seleccioná una categoría:');
+
+            return;
+        }
+
+        $subcategories = Category::active()
+            ->where('parent_id', $category->id)
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get();
+
+        if ($subcategories->isNotEmpty()) {
+            Cache::put("telegram_conversation_{$chatId}", [
+                'step' => 'subcategory_selection',
+                'type' => $type,
+                'amount' => $amount,
+                'category' => $category->name,
+                'category_id' => $category->id,
+            ], now()->addHour());
+
+            $this->sendSubcategoryKeyboard($telegram, $chatId, $category, $subcategories);
+
+            return;
+        }
+
+        $this->proceedToNoteStep($telegram, $chatId, $username, $type, $amount, $category->name, null);
+
+        return;
+    }
+
+    private function handleSubcategorySelectionStep(Api $telegram, string $chatId, ?string $username, string $text, array $conversation): void
+    {
+        $type = $conversation['type'];
+        $amount = $conversation['amount'];
+        $mainCategoryName = $conversation['category'];
+
+        if (str_contains($text, '✅') || str_starts_with($text, '✓') || trim(strtolower($text)) === $mainCategoryName) {
+            $this->proceedToNoteStep($telegram, $chatId, $username, $type, $amount, $mainCategoryName, null);
+
+            return;
+        }
+
+        $subcategoryName = $this->extractCategoryName($text);
+
+        if ($subcategoryName === '') {
+            $category = Category::find($conversation['category_id']);
+            $subcategories = Category::active()->where('parent_id', $category->id)
+                ->orderBy('sort_order')->orderBy('name')->get();
+            $this->sendSubcategoryKeyboard($telegram, $chatId, $category, $subcategories, 'Subcategoría inválida. Seleccioná una subcategoría:');
+
+            return;
+        }
+
+        $subcategory = Category::active()
+            ->where('parent_id', $conversation['category_id'])
+            ->where('name', $subcategoryName)
+            ->first();
+
+        if (! $subcategory) {
+            $category = Category::find($conversation['category_id']);
+            $subcategories = Category::active()->where('parent_id', $category->id)
+                ->orderBy('sort_order')->orderBy('name')->get();
+            $this->sendSubcategoryKeyboard($telegram, $chatId, $category, $subcategories, 'Subcategoría no encontrada. Seleccioná una subcategoría:');
+
+            return;
+        }
+
+        $this->proceedToNoteStep($telegram, $chatId, $username, $type, $amount, $mainCategoryName, $subcategory->name);
+
+        return;
+    }
+
+    private function proceedToNoteStep(Api $telegram, string $chatId, ?string $username, string $type, int $amount, string $category, ?string $subcategory): void
+    {
+        Cache::put("telegram_conversation_{$chatId}", [
+            'step' => 'note',
+            'type' => $type,
+            'amount' => $amount,
+            'category' => $category,
+            'subcategory' => $subcategory,
+        ], now()->addHour());
+
+        $keyboard = Keyboard::make([
+            'keyboard' => [[Keyboard::button(['text' => '⏭ Saltar'])]],
+            'resize_keyboard' => true,
+            'one_time_keyboard' => true,
+        ]);
+
+        $telegram->sendMessage([
+            'chat_id' => $chatId,
+            'text' => 'Agregá una nota (opcional) o presioná "Saltar":',
+            'reply_markup' => $keyboard,
+        ]);
+    }
+
+    private function handleNoteStep(Api $telegram, string $chatId, ?string $username, string $text, array $conversation): void
+    {
+        $type = $conversation['type'];
+        $amount = $conversation['amount'];
+        $category = $conversation['category'];
+        $subcategory = $conversation['subcategory'] ?? null;
+
+        $trimmed = trim($text);
+        $notes = null;
+
+        if (strtolower($trimmed) !== 'saltar' && ! str_contains($trimmed, '⏭')) {
+            $notes = $trimmed;
+        }
+
+        $args = $subcategory ? "{$amount} {$category} {$subcategory}" : "{$amount} {$category}";
+
+        if (! $this->transactionService->register($type, $args, $chatId, $username, $errorMessage, $notes)) {
             Cache::forget("telegram_conversation_{$chatId}");
 
             $telegram->sendMessage([
@@ -411,11 +534,82 @@ class TelegramCommandService
         Cache::forget("telegram_conversation_{$chatId}");
 
         $displayAmount = $type === self::OUTGO ? $amount : $amount;
+        $where = $subcategory ? "{$category} / {$subcategory}" : $category;
+        $noteSuffix = $notes ? " — {$notes}" : '';
 
         $telegram->sendMessage([
             'chat_id' => $chatId,
-            'text' => "Registrado: {$type} de \${$displayAmount} en {$category}",
+            'text' => "Registrado: {$type} de \${$displayAmount} en {$where}{$noteSuffix}",
         ]);
+    }
+
+    private function sendCategoryKeyboard(Api $telegram, string $chatId, string $type, ?string $message = null): void
+    {
+        $categories = Category::active()
+            ->whereNull('parent_id')
+            ->forType($type === self::OUTGO ? 'outgo' : 'income')
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get();
+
+        $keyboard = $this->buildKeyboard($categories);
+        $oneTimeKeyboard = Keyboard::make([
+            'keyboard' => $keyboard,
+            'resize_keyboard' => true,
+            'one_time_keyboard' => true,
+        ]);
+
+        $telegram->sendMessage([
+            'chat_id' => $chatId,
+            'text' => $message ?? 'Seleccioná una categoría:',
+            'reply_markup' => $oneTimeKeyboard,
+        ]);
+    }
+
+    private function sendSubcategoryKeyboard(Api $telegram, string $chatId, Category $category, $subcategories, ?string $message = null): void
+    {
+        $buttons = $subcategories->map(fn ($cat) => [
+            Keyboard::button(['text' => CategoryEmoji::forCategory($cat->name) . ' ' . $cat->name]),
+        ])->all();
+
+        $buttons[] = [
+            Keyboard::button(['text' => '✅ ' . $category->name]),
+        ];
+
+        $keyboard = Keyboard::make([
+            'keyboard' => $buttons,
+            'resize_keyboard' => true,
+            'one_time_keyboard' => true,
+        ]);
+
+        $telegram->sendMessage([
+            'chat_id' => $chatId,
+            'text' => $message ?? 'Seleccioná una subcategoría:',
+            'reply_markup' => $keyboard,
+        ]);
+    }
+
+    private function buildKeyboard($categories): array
+    {
+        $buttons = $categories->map(fn ($cat) =>
+            Keyboard::button(['text' => CategoryEmoji::forCategory($cat->name) . ' ' . $cat->name])
+        )->values()->all();
+
+        $rows = [];
+        for ($i = 0; $i < count($buttons); $i += 2) {
+            $rows[] = array_slice($buttons, $i, 2);
+        }
+
+        return $rows;
+    }
+
+    private function extractCategoryName(string $text): string
+    {
+        $text = trim($text);
+
+        $text = preg_replace('/^[^\p{L}\p{N}\s]+/u', '', $text);
+
+        return trim(strtolower($text));
     }
 
     private function sendUnknownCommand(Api $telegram, string $chatId): void
