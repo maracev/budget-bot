@@ -8,6 +8,9 @@ class TransactionConstants
 
     public const CACHE_KEY_PREFIX = 'telegram_conversation_';
 
+    public const CANCEL = 'cancel';
+
+
     public const STEP_AMOUNT = 'amount';
     public const STEP_CATEGORY_SELECTION = 'category_selection';
     public const STEP_SUBCATEGORY_SELECTION = 'subcategory_selection';

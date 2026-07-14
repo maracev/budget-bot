@@ -314,7 +314,7 @@ class TelegramCommandServiceTest extends TestCase
             'amount' => -500,
             'category' => 'supermercado',
             'owner_name' => 'maria',
-            'notes' => null,
+            'notes' => 'Saltar',
         ]);
 
         $this->assertNull(Cache::get('telegram_conversation_123'));

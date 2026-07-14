@@ -342,6 +342,8 @@ class TelegramCommandService
 
         if ($step === TransactionConstants::STEP_NOTE) {
             $this->handleNoteStep($telegram, $chatId, $username, $text, $conversation);
+
+            return;
         }
     }
 
@@ -485,7 +487,7 @@ class TelegramCommandService
         $trimmed = trim($text);
         $notes = null;
 
-        if (strtolower($trimmed) !== 'saltar' && ! str_contains($trimmed, TransactionConstants::SKIP_INDICATOR)) {
+        if (strtolower($trimmed) !==  TransactionConstants::CANCEL && ! str_contains($trimmed, TransactionConstants::SKIP_INDICATOR)) {
             $notes = $trimmed;
         }
 
@@ -504,13 +506,12 @@ class TelegramCommandService
 
         Cache::forget(TransactionConstants::CACHE_KEY_PREFIX . $chatId);
 
-        $displayAmount = $type === TransactionConstants::OUTGO ? $amount : $amount;
         $where = $subcategory ? "{$category} / {$subcategory}" : $category;
         $noteSuffix = $notes ? " — {$notes}" : '';
 
         $telegram->sendMessage([
             'chat_id' => $chatId,
-            'text' => "Registrado: {$type} de \${$displayAmount} en {$where}{$noteSuffix}",
+            'text' => "Registrado: {$type} de \${$amount} en {$where}{$noteSuffix}",
         ]);
     }
 
