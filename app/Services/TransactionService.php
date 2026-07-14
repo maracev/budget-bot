@@ -21,7 +21,7 @@ class TransactionService
      * @param  mixed  $ownerName
      * @param  mixed  $errorMessage
      */
-    public function register(string $rawType, string $args, string $ownerId, ?string $ownerName, ?string &$errorMessage = null): bool
+    public function register(string $rawType, string $args, string $ownerId, ?string $ownerName, ?string &$errorMessage = null, ?string $notes = null): bool
     {
         $typeMap = config('type_mapper');
         $type = $typeMap[$rawType] ?? null;
@@ -58,6 +58,7 @@ class TransactionService
                 'subcategory' => $subcategory,
                 'owner_id' => $ownerId,
                 'owner_name' => $ownerName,
+                'notes' => $notes,
             ]);
 
             $this->lastAmount = $amount;
