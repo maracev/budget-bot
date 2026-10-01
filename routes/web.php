@@ -1,6 +1,8 @@
 <?php
 
+use App\Http\Controllers\ReportController;
 use App\Http\Controllers\TelegramBotController;
+use App\Http\Controllers\TransactionController;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
 
@@ -20,6 +22,13 @@ Route::get('/telegram/webhook', function () {
 
     return response('OK', 200);
 });
+
 Route::get('/', function () {
-    return view('welcome');
+    return redirect()->route('transactions.index');
 });
+
+Route::resource('transactions', TransactionController::class)->only([
+    'index', 'show', 'edit', 'update', 'destroy',
+]);
+
+Route::get('/reportes', [ReportController::class, 'index'])->name('reports.index');
