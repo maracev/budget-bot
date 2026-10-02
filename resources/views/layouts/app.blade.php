@@ -49,8 +49,17 @@
     <header>
         <nav>
             <strong>Budget Tracker</strong>
-            <a href="{{ route('transactions.index') }}" class="{{ request()->routeIs('transactions.*') ? 'active' : '' }}">Movimientos</a>
-            <a href="{{ route('reports.index') }}" class="{{ request()->routeIs('reports.*') ? 'active' : '' }}">Reportes</a>
+            @auth
+                <a href="{{ route('transactions.index') }}" class="{{ request()->routeIs('transactions.*') ? 'active' : '' }}">Movimientos</a>
+                <a href="{{ route('reports.index') }}" class="{{ request()->routeIs('reports.*') ? 'active' : '' }}">Reportes</a>
+                <form method="POST" action="{{ route('logout') }}" style="margin-left:auto;">
+                    @csrf
+                    <button type="submit" class="btn btn-sm">Logout</button>
+                </form>
+            @endauth
+            @guest
+                <a href="{{ route('login') }}" style="margin-left:auto;">Login</a>
+            @endguest
         </nav>
     </header>
     <main class="container">
