@@ -84,7 +84,7 @@
             </tbody>
         </table>
         <div style="margin-top:1rem;">
-            {{ $transactions->links() }}
+            @include('partials.pagination', ['paginator' => $transactions])
         </div>
     </div>
 @endsection

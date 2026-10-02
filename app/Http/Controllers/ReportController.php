@@ -10,8 +10,13 @@ class ReportController extends Controller
 {
     public function index(Request $request)
     {
-        $dateFrom = $request->date_from ?? now()->startOfMonth()->toDateString();
-        $dateTo = $request->date_to ?? now()->endOfMonth()->toDateString();
+        $filters = $request->validate([
+            'date_from' => ['nullable', 'date'],
+            'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
+        ]);
+
+        $dateFrom = $filters['date_from'] ?? now()->startOfMonth()->toDateString();
+        $dateTo = $filters['date_to'] ?? now()->endOfMonth()->toDateString();
 
         $baseQuery = Transaction::query()
             ->whereDate('created_at', '>=', $dateFrom)
@@ -37,13 +42,13 @@ class ReportController extends Controller
         $monthlyEvolution = Transaction::query()
             ->whereDate('created_at', '>=', now()->subMonths(11)->startOfMonth())
             ->whereDate('created_at', '<=', now()->endOfMonth())
-            ->selectRaw("DATE_FORMAT(created_at, '%Y-%m') as month, SUM(CASE WHEN type='income' THEN amount ELSE 0 END) as income, SUM(CASE WHEN type='outgo' THEN amount ELSE 0 END) as expense")
+            ->selectRaw("{$this->monthExpression()} as month, SUM(CASE WHEN type='income' THEN amount ELSE 0 END) as income, SUM(CASE WHEN type='outgo' THEN amount ELSE 0 END) as expense")
             ->groupBy('month')
             ->orderBy('month')
             ->get();
 
         $periodCompare = null;
-        if ($request->filled('date_from') && $request->filled('date_to')) {
+        if ($filters['date_from'] ?? false) {
             $from = \Carbon\Carbon::parse($dateFrom);
             $to = \Carbon\Carbon::parse($dateTo);
             $diffDays = $from->diffInDays($to) + 1;
@@ -78,5 +83,17 @@ class ReportController extends Controller
             'monthlyEvolution',
             'periodCompare'
         ));
+    }
+
+    /**
+     * Year-month grouping is spelled differently per driver, and the test
+     * suite runs on SQLite while production uses MySQL.
+     */
+    private function monthExpression(): string
+    {
+        return match (DB::connection()->getDriverName()) {
+            'sqlite' => "strftime('%Y-%m', created_at)",
+            default => "DATE_FORMAT(created_at, '%Y-%m')",
+        };
     }
 }
