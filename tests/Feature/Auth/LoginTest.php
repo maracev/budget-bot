@@ -59,6 +59,18 @@ class LoginTest extends TestCase
     }
 
     /** @test */
+    public function authenticated_user_visiting_login_is_redirected_to_an_existing_page()
+    {
+        $user = User::create([
+            'name' => 'admin',
+            'email' => 'admin@example.com',
+            'password' => 'secret123',
+        ]);
+
+        $this->actingAs($user)->get('/login')->assertRedirect('/transactions');
+    }
+
+    /** @test */
     public function logout_invalidates_session()
     {
         $user = User::create([
