@@ -11,5 +11,11 @@
       ],
       "enabled": true
     }
+  },
+  "skills": {
+    "paths": [
+      ".opencode/skills/show-me",
+      ".opencode/skills/visual-pr"
+    ]
   }
 }

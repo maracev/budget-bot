@@ -5,22 +5,21 @@
     "keywords": ["laravel", "framework"],
     "license": "MIT",
     "require": {
-        "php": "^8.1",
+        "php": "^8.4",
         "guzzlehttp/guzzle": "^7.2",
-        "irazasyed/telegram-bot-sdk": "^3.15",
-        "laravel/framework": "^10.10",
-        "laravel/sanctum": "^3.3",
-        "laravel/tinker": "^2.8"
+        "irazasyed/telegram-bot-sdk": "^3.16",
+        "laravel/framework": "^13.0",
+        "laravel/sanctum": "^4.0",
+        "spatie/laravel-ignition": "^2.12"
     },
     "require-dev": {
-        "fakerphp/faker": "^1.9.1",
+        "fakerphp/faker": "^1.23",
         "laravel/pint": "^1.25",
-        "laravel/sail": "^1.18",
-        "laravel/telescope": "^5.8",
-        "mockery/mockery": "^1.4.4",
-        "nunomaduro/collision": "^7.0",
-        "phpunit/phpunit": "^10.5",
-        "spatie/laravel-ignition": "^2.0"
+        "laravel/sail": "^1.41",
+        "laravel/telescope": "^5.25",
+        "mockery/mockery": "^1.6",
+        "nunomaduro/collision": "^8.6",
+        "phpunit/phpunit": "^11.0"
     },
     "autoload": {
         "files": [
@@ -64,8 +63,16 @@
         "allow-plugins": {
             "pestphp/pest-plugin": true,
             "php-http/discovery": true
+        },
+        "platform": {
+            "php": "8.3.0"
         }
     },
     "minimum-stability": "stable",
-    "prefer-stable": true
+    "prefer-stable": true,
+    "repositories": [{
+        "name": "packagist.org",
+        "type": "composer",
+        "url": "https://packagist.org"
+    }]
 }
