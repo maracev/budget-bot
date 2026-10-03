@@ -166,9 +166,12 @@ return [
     | to the server if the browser has a HTTPS connection. This will keep
     | the cookie from being sent to you when it can't be done securely.
     |
+    | Defaults to true whenever debug mode is off, so production deployments
+    | never send session cookies over plain HTTP by accident.
+    |
     */
 
-    'secure' => env('SESSION_SECURE_COOKIE'),
+    'secure' => env('SESSION_SECURE_COOKIE', ! env('APP_DEBUG', false)),
 
     /*
     |--------------------------------------------------------------------------
