@@ -80,4 +80,34 @@ class ReportFilterTest extends TestCase
         $response->assertViewHas('expenseTotal', 0);
         $response->assertDontSee('viejo');
     }
+
+    /** @test */
+    public function the_category_breakdown_only_lists_expenses()
+    {
+        $this->login();
+
+        Transaction::create(['type' => 'income', 'amount' => 1000, 'category' => 'sueldo']);
+        Transaction::create(['type' => 'outgo', 'amount' => -400, 'category' => 'supermercado']);
+
+        $response = $this->get('/reportes?date_from='.now()->startOfMonth()->toDateString().'&date_to='.now()->endOfMonth()->toDateString());
+
+        $response->assertOk();
+
+        $categories = $response->viewData('byCategory')->pluck('category');
+
+        $this->assertSame(['supermercado'], $categories->all());
+        $response->assertDontSee('sueldo');
+    }
+
+    /** @test */
+    public function the_period_comparison_is_rendered_without_filters()
+    {
+        $this->login();
+
+        $response = $this->get('/reportes');
+
+        $response->assertOk();
+        $response->assertViewHas('periodCompare');
+        $response->assertSee('Comparación con el período anterior');
+    }
 }

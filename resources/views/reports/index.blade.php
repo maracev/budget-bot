@@ -21,7 +21,7 @@
             </div>
             <div class="flex gap">
                 <button type="submit" class="btn btn-primary">Consultar</button>
-                <a href="{{ route('reports.index') }}" class="btn">Hoy/Este mes</a>
+                <a href="{{ route('reports.index') }}" class="btn">Este mes</a>
             </div>
         </form>
     </div>
@@ -41,25 +41,23 @@
         </div>
     </div>
 
-    @if ($periodCompare)
-        <div class="card">
-            <h3 class="mb">Comparación de períodos</h3>
-            <div class="grid grid-3">
-                <div class="stat">
-                    <div class="stat-label">Ingresos ({{ $periodCompare['prev_from'] }} a {{ $periodCompare['prev_to'] }})</div>
-                    <div class="stat-value text-success">{{ number_format($periodCompare['income_prev'], 0, ',', '.') }}</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-label">Gastos (período anterior)</div>
-                    <div class="stat-value text-danger">{{ number_format(abs($periodCompare['expense_prev']), 0, ',', '.') }}</div>
-                </div>
-                <div class="stat">
-                    <div class="stat-label">Balance (período anterior)</div>
-                    <div class="stat-value {{ $periodCompare['balance_prev'] >= 0 ? 'text-success' : 'text-danger' }}">{{ number_format($periodCompare['balance_prev'], 0, ',', '.') }}</div>
-                </div>
+    <div class="card">
+        <h3 class="mb">Comparación con el período anterior ({{ $periodCompare['prev_from'] }} a {{ $periodCompare['prev_to'] }})</h3>
+        <div class="grid grid-3">
+            <div class="stat">
+                <div class="stat-label">Ingresos</div>
+                <div class="stat-value text-success">{{ number_format($periodCompare['income_prev'], 0, ',', '.') }}</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">Gastos</div>
+                <div class="stat-value text-danger">{{ number_format(abs($periodCompare['expense_prev']), 0, ',', '.') }}</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">Balance</div>
+                <div class="stat-value {{ $periodCompare['balance_prev'] >= 0 ? 'text-success' : 'text-danger' }}">{{ number_format($periodCompare['balance_prev'], 0, ',', '.') }}</div>
             </div>
         </div>
-    @endif
+    </div>
 
     <div class="card table-responsive">
         <h3 class="mb">Gastos por categoría</h3>

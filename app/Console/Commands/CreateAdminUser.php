@@ -8,13 +8,14 @@ use Illuminate\Support\Facades\Hash;
 
 class CreateAdminUser extends Command
 {
+
     protected $signature = 'app:create-admin {--password=} {--force : Sobrescribe password si el usuario ya existe}';
 
     protected $description = 'Crea (o actualiza) el usuario admin con contraseña desde env o opción --password';
 
     public function handle(): int
     {
-        $password = $this->option('password') ?: env('ADMIN_PASSWORD');
+        $password = $this->option('password') ?: config('admin.password');
 
         if (empty($password)) {
             $this->error('Debe proporcionar contraseña via --password o variable ADMIN_PASSWORD en .env');
@@ -33,6 +34,7 @@ class CreateAdminUser extends Command
         $user->save();
 
         $this->info($user->wasRecentlyCreated ? 'Usuario admin creado exitosamente.' : 'Usuario admin actualizado exitosamente.');
+
         return self::SUCCESS;
     }
 }

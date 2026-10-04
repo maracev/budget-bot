@@ -2,18 +2,16 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\ReportIndexRequest;
 use App\Models\Transaction;
-use Illuminate\Http\Request;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class ReportController extends Controller
 {
-    public function index(Request $request)
+    public function index(ReportIndexRequest $request)
     {
-        $filters = $request->validate([
-            'date_from' => ['nullable', 'date'],
-            'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
-        ]);
+        $filters = $request->validated();
 
         $dateFrom = $filters['date_from'] ?? now()->startOfMonth()->toDateString();
         $dateTo = $filters['date_to'] ?? now()->endOfMonth()->toDateString();
@@ -34,6 +32,7 @@ class ReportController extends Controller
         $balance = $incomeTotal + $expenseTotal;
 
         $byCategory = (clone $baseQuery)
+            ->where('type', 'outgo')
             ->selectRaw('category, SUM(amount) as total, COUNT(*) as count')
             ->groupBy('category')
             ->orderByDesc(DB::raw('SUM(amount)'))
@@ -47,31 +46,7 @@ class ReportController extends Controller
             ->orderBy('month')
             ->get();
 
-        $periodCompare = null;
-        if ($filters['date_from'] ?? false) {
-            $from = \Carbon\Carbon::parse($dateFrom);
-            $to = \Carbon\Carbon::parse($dateTo);
-            $diffDays = $from->diffInDays($to) + 1;
-            $prevFrom = $from->copy()->subDays($diffDays)->toDateString();
-            $prevTo = $from->copy()->subDay()->toDateString();
-
-            $prev = Transaction::query()
-                ->whereDate('created_at', '>=', $prevFrom)
-                ->whereDate('created_at', '<=', $prevTo)
-                ->selectRaw("
-                    SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income_total,
-                    SUM(CASE WHEN type = 'outgo' THEN amount ELSE 0 END) as expense_total
-                ")
-                ->first();
-
-            $periodCompare = [
-                'prev_from' => $prevFrom,
-                'prev_to' => $prevTo,
-                'income_prev' => (int) ($prev->income_total ?? 0),
-                'expense_prev' => (int) ($prev->expense_total ?? 0),
-                'balance_prev' => ((int) ($prev->income_total ?? 0)) + ((int) ($prev->expense_total ?? 0)),
-            ];
-        }
+        $periodCompare = $this->compareWithPreviousPeriod($dateFrom, $dateTo);
 
         return view('reports.index', compact(
             'dateFrom',
@@ -83,6 +58,39 @@ class ReportController extends Controller
             'monthlyEvolution',
             'periodCompare'
         ));
+    }
+
+    /**
+     * Totals of the period immediately preceding the one being reported.
+     *
+     * @return array{prev_from: string, prev_to: string, income_prev: int, expense_prev: int, balance_prev: int}
+     */
+    private function compareWithPreviousPeriod(string $dateFrom, string $dateTo): array
+    {
+        $from = Carbon::parse($dateFrom);
+        $diffDays = $from->diffInDays(Carbon::parse($dateTo)) + 1;
+        $prevFrom = $from->copy()->subDays($diffDays)->toDateString();
+        $prevTo = $from->copy()->subDay()->toDateString();
+
+        $prev = Transaction::query()
+            ->whereDate('created_at', '>=', $prevFrom)
+            ->whereDate('created_at', '<=', $prevTo)
+            ->selectRaw("
+                SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income_total,
+                SUM(CASE WHEN type = 'outgo' THEN amount ELSE 0 END) as expense_total
+            ")
+            ->first();
+
+        $incomePrev = (int) ($prev->income_total ?? 0);
+        $expensePrev = (int) ($prev->expense_total ?? 0);
+
+        return [
+            'prev_from' => $prevFrom,
+            'prev_to' => $prevTo,
+            'income_prev' => $incomePrev,
+            'expense_prev' => $expensePrev,
+            'balance_prev' => $incomePrev + $expensePrev,
+        ];
     }
 
     /**

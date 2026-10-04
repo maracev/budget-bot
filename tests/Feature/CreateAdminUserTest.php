@@ -46,13 +46,43 @@ class CreateAdminUserTest extends TestCase
     /** @test */
     public function it_fails_when_no_password_is_provided()
     {
+        $previous = [
+            'putenv' => getenv('ADMIN_PASSWORD'),
+            'env' => $_ENV['ADMIN_PASSWORD'] ?? null,
+            'server' => $_SERVER['ADMIN_PASSWORD'] ?? null,
+        ];
+
         putenv('ADMIN_PASSWORD');
         $_ENV['ADMIN_PASSWORD'] = null;
         $_SERVER['ADMIN_PASSWORD'] = null;
+        config(['admin.password' => null]);
 
-        $exitCode = Artisan::call('app:create-admin');
+        try {
+            $exitCode = Artisan::call('app:create-admin');
 
-        $this->assertSame(1, $exitCode);
-        $this->assertSame(0, User::count());
+            $this->assertSame(1, $exitCode);
+            $this->assertSame(0, User::count());
+        } finally {
+            putenv($previous['putenv'] === false ? 'ADMIN_PASSWORD' : "ADMIN_PASSWORD={$previous['putenv']}");
+
+            foreach (['env', 'server'] as $key) {
+                if ($previous[$key] === null) {
+                    unset($_ENV['ADMIN_PASSWORD'], $_SERVER['ADMIN_PASSWORD']);
+                } else {
+                    $_ENV['ADMIN_PASSWORD'] = $previous[$key];
+                    $_SERVER['ADMIN_PASSWORD'] = $previous[$key];
+                }
+            }
+        }
+    }
+
+    /** @test */
+    public function it_reads_the_password_from_config()
+    {
+        config(['admin.password' => 'from-config']);
+
+        Artisan::call('app:create-admin');
+
+        $this->assertTrue(Hash::check('from-config', User::first()->password));
     }
 }

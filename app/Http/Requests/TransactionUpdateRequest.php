@@ -24,8 +24,20 @@ class TransactionUpdateRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        if ($this->has('amount') && is_string($this->amount)) {
-            $this->merge(['amount' => (int) $this->amount]);
+        $amount = $this->input('amount');
+
+        if (! is_numeric($amount)) {
+            return;
         }
+
+        // Non integral values are left untouched so the integer rule rejects them.
+        if ((int) $amount != $amount) {
+            return;
+        }
+
+        // The rest of the app assumes income amounts are positive and outgo amounts negative.
+        $sign = $this->input('type') === 'outgo' ? -1 : 1;
+
+        $this->merge(['amount' => $sign * abs((int) $amount)]);
     }
 }
