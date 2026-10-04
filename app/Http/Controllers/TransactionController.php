@@ -13,6 +13,7 @@ class TransactionController extends Controller
     {
         $transactions = $this->filteredQuery($request)
             ->orderByDesc('created_at')
+            ->orderByDesc('id')
             ->paginate(50)
             ->withQueryString();
 

@@ -83,4 +83,24 @@ class LoginTest extends TestCase
 
         $this->assertGuest();
     }
+
+    /** @test */
+    public function login_attempts_are_rate_limited()
+    {
+        User::create([
+            'name' => 'admin',
+            'email' => 'admin@example.com',
+            'password' => 'secret123',
+        ]);
+
+        for ($attempt = 1; $attempt <= 5; $attempt++) {
+            $this->post('/login', ['email' => 'admin@example.com', 'password' => 'wrong-password'])
+                ->assertRedirect();
+        }
+
+        $this->post('/login', ['email' => 'admin@example.com', 'password' => 'secret123'])
+            ->assertStatus(429);
+
+        $this->assertGuest();
+    }
 }

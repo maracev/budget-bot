@@ -3,13 +3,12 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Providers\RouteServiceProvider;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 class LoginController extends Controller
 {
-    protected $redirectTo = '/transactions';
-
     public function __construct()
     {
         $this->middleware('guest')->except('logout');
@@ -30,7 +29,7 @@ class LoginController extends Controller
         if (Auth::attempt($credentials, $request->boolean('remember'))) {
             $request->session()->regenerate();
 
-            return redirect()->intended($this->redirectPath());
+            return redirect()->intended(RouteServiceProvider::HOME);
         }
 
         return back()->withErrors([
@@ -45,10 +44,5 @@ class LoginController extends Controller
         $request->session()->regenerateToken();
 
         return redirect()->route('login');
-    }
-
-    public function redirectPath()
-    {
-        return property_exists($this, 'redirectTo') ? $this->redirectTo : route('transactions.index');
     }
 }

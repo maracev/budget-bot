@@ -15,7 +15,7 @@ class CreateAdminUser extends Command
 
     public function handle(): int
     {
-        $password = $this->option('password') ?: env('ADMIN_PASSWORD');
+        $password = $this->option('password') ?: config('admin.password');
 
         if (empty($password)) {
             $this->error('Debe proporcionar contraseña via --password o variable ADMIN_PASSWORD en .env');
